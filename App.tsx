@@ -421,7 +421,7 @@ export default function App() {
                                     <div className="flex flex-wrap gap-2 mt-2">
                                         {data.customLocations.map((loc, i) => (
                                             <span key={i} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                                                {loc} <button onClick={() => updateField('customLocations', data.customLocations.filter((_, idx) => idx !== i))}><X size={12}/></button>
+                                                {loc} <button onClick={() => updateField('customLocations', data.customLocations.filter((_, idx) => idx !== i))} aria-label={`Remove ${loc}`} title={`Remove ${loc}`}><X size={12}/></button>
                                             </span>
                                         ))}
                                     </div>
@@ -507,6 +507,7 @@ export default function App() {
                                             <button 
                                                 onClick={() => updateField('audienceSegments', [])}
                                                 className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                                aria-label="Clear all selected segments"
                                             >
                                                 Clear all
                                             </button>
@@ -521,7 +522,7 @@ export default function App() {
                                             data.audienceSegments.map((seg) => (
                                                 <div key={seg} className="flex justify-between items-start bg-white p-2 rounded border border-gray-200 shadow-sm">
                                                     <span className="text-sm text-gray-800">{seg}</span>
-                                                    <button onClick={() => toggleAudienceSegment(seg)} className="text-gray-400 hover:text-red-500 ml-2">
+                                                    <button onClick={() => toggleAudienceSegment(seg)} className="text-gray-400 hover:text-red-500 ml-2" aria-label={`Remove ${seg}`} title={`Remove ${seg}`}>
                                                         <X size={14} />
                                                     </button>
                                                 </div>
@@ -687,7 +688,7 @@ export default function App() {
                                                 value={h} 
                                                 className="flex-1 px-3 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 text-sm"
                                             />
-                                            <button onClick={() => removeAsset('headlines', i)} className="text-gray-400 hover:text-red-500"><X size={18} /></button>
+                                            <button onClick={() => removeAsset('headlines', i)} className="text-gray-400 hover:text-red-500" aria-label="Remove headline" title="Remove headline"><X size={18} /></button>
                                         </div>
                                     ))}
                                     {data.headlines.length < 15 && (
@@ -712,6 +713,8 @@ export default function App() {
                                                     el.value = '';
                                                 }}
                                                 className="absolute right-2 top-2 text-blue-600 hover:bg-blue-50 p-0.5 rounded"
+                                                aria-label="Add headline"
+                                                title="Add headline"
                                             >
                                                 <Plus size={18}/>
                                             </button>
@@ -734,7 +737,7 @@ export default function App() {
                                                 value={h} 
                                                 className="flex-1 px-3 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 text-sm"
                                             />
-                                            <button onClick={() => removeAsset('descriptions', i)} className="text-gray-400 hover:text-red-500"><X size={18} /></button>
+                                            <button onClick={() => removeAsset('descriptions', i)} className="text-gray-400 hover:text-red-500" aria-label="Remove description" title="Remove description"><X size={18} /></button>
                                         </div>
                                     ))}
                                     {data.descriptions.length < 4 && (
@@ -759,6 +762,8 @@ export default function App() {
                                                     el.value = '';
                                                 }}
                                                 className="absolute right-2 top-2 text-blue-600 hover:bg-blue-50 p-0.5 rounded"
+                                                aria-label="Add description"
+                                                title="Add description"
                                             >
                                                 <Plus size={18}/>
                                             </button>
