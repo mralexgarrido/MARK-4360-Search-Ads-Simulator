@@ -100,13 +100,18 @@ const AUDIENCE_CATEGORIES = [
 // --- Reusable UI Components ---
 
 const InfoTooltip = ({ text }: { text: string }) => (
-    <div className="group relative inline-block ml-1 align-middle">
-        <HelpCircle size={14} className="text-gray-400 hover:text-gray-600 cursor-help" />
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs p-3 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 leading-relaxed">
+    <button
+        type="button"
+        className="group relative inline-block ml-1 align-middle rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+        aria-label={text}
+        onClick={(e) => e.preventDefault()}
+    >
+        <HelpCircle size={14} className="text-gray-400 group-hover:text-gray-600 group-focus:text-gray-600 cursor-help" />
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs p-3 rounded shadow-lg opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity pointer-events-none z-50 leading-relaxed text-left font-normal">
             {text}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></div>
-        </div>
-    </div>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
+        </span>
+    </button>
 );
 
 const SidebarItem = ({ id, label, active, completed, onClick }: any) => (
