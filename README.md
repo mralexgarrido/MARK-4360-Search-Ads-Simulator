@@ -1,72 +1,98 @@
-# Search Ads Simulator
+# Google Ads Simulator Revamp
 
-Practice the decisions behind a search advertising campaign before working in a production advertising account.
+A guided Google Search Ads practice workspace for MARK 4360. Students learn the campaign creation controls, publish a local practice campaign, and document their decisions for Alex Garrido's review.
 
-Built for MARK 4360 and other marketing learning environments, this browser-based simulator guides students through bidding, campaign settings, keywords, ad copy, budget, and a final review. The emphasis is on explaining a campaign strategy, not simply completing a form.
+**The instructor provides the feedback, explanation, and final grade.** The app checks technical field requirements. It does not grade strategy, score ad copy, predict performance, or generate assessment explanations.
 
-**[Open the simulator](https://mralexgarrido.github.io/MARK-4360-Search-Ads-Simulator/)** · [Report an issue](https://github.com/mralexgarrido/MARK-4360-Search-Ads-Simulator/issues) · [Maintainer guide](MAINTAINING.md)
+[Current public simulator](https://mralexgarrido.github.io/MARK-4360-Search-Ads-Simulator/) · [Maintainer guide](MAINTAINING.md) · [Revamp review notes](REVAMP_REVIEW.md) · [Report an issue](https://github.com/mralexgarrido/MARK-4360-Search-Ads-Simulator/issues)
 
-## What you can do
+The public link may still show the earlier version while this revamp is under review.
 
-- Plan bidding, locations, audience segments, keywords, and budget in a guided campaign workspace.
-- Draft headlines and descriptions, review an ad preview, and use completion indicators to identify unfinished steps.
-- Save a draft in the current browser and print the campaign review using the browser's print or Save as PDF option.
+## Student workflow
 
-This is an independent educational simulation, not Google Ads or a connection to an advertising account. Entered budgets do not buy media. The ad-strength indicator is a local completeness calculation, not Google's scoring system or a performance forecast.
+| Step | Platform practice |
+| --- | --- |
+| Campaign | Choose an objective and define the conversion and measurement plan |
+| Bidding | Select clicks, manual CPC, conversions, target CPA, conversion value, target ROAS, or impression share |
+| Campaign settings | Configure search partners, included and excluded locations, presence options, languages, dates, schedules, and audience mode |
+| Ad groups & keywords | Organize groups, enter broad/phrase/exact keywords, and add group or campaign negative keywords |
+| Ads | Create multiple responsive ads, edit headline and description assets, pin positions, and inspect illustrative combinations |
+| Assets & URL options | Enter sitelinks, callouts, and optional documented UTM parameters |
+| Budget | Enter an average daily budget and inspect spending-limit arithmetic |
+| Review & publish | Resolve missing technical fields, confirm practice publication, and pause or resume locally |
+| Class submission | Add identifying information and written rationale, then export the campaign evidence |
 
-## Start a practice campaign
+Information boxes and accessible step guides explain controls using bundled examples. Asset counts and character counters describe completion only. The app never labels a campaign strategically successful.
 
-1. Choose a fictional business, a customer need, and a campaign objective.
-2. Work through **Bidding**, **Campaign settings**, **Keywords**, **Ads**, and **Budget** in the sidebar. Explain how each choice supports the objective.
-3. Open **Review**, complete the requested student information, and check the campaign before printing.
-4. Select **Save** before closing the page. Use **Print PDF** to open the browser's print dialog, or **Start Over** to clear the saved campaign and begin again.
+This is an independent educational simulation. It reproduces selected Search campaign concepts and controls, rather than every screen or feature of Google Ads. There is no account login, billing, policy decision, auction, or real delivery. Location names and audience segments are practice selections. Destinations and conversion tracking plans are recorded without fetching websites or installing tags.
 
-Saving is manual. A saved draft belongs to this browser and site, not a user account; clearing site data removes it, and it does not sync between devices. Use fictional or non-sensitive information, particularly on shared classroom computers.
+## Save and submit
 
-### For instructors
+- **Autosave** stores the current workspace in this browser and site after a short delay. **Save now** also saves immediately.
+- **Project JSON** preserves the working campaign, notes, recent activity, and launch snapshots. Download a copy and import it to continue on another device.
+- **Print / Save PDF** uses the browser's native print dialog. The report lists every group, keyword, exclusion, ad asset and pin, campaign setting, destination, measurement plan, and written rationale.
+- **Keyword CSV** documents positive and negative keywords and their scope. It is not a Google Ads upload template.
+- **Launch snapshots** capture publication settings and notes. Choose the current working campaign or a historical launch for the report. Student name and course section use the current submission information.
 
-Ask students to submit their printed campaign plan with a short explanation of keyword intent, audience fit, copy choices, and budget tradeoffs. A useful peer-review exercise is to have a partner identify one mismatch between the customer's search intent and the proposed landing page or ad. These are suggested activities, not a built-in grading rubric.
+Publication captures a snapshot and enables the practice campaign here. Later edits are marked as unpublished changes until another publication. Pausing and resuming affect the locally published campaign status. Recent history retains up to 10 launches and 100 activity entries; export JSON before replacing a project or if you need an earlier record.
+
+Storage belongs to the browser origin, has browser quota limits, and does not sync through a student account. Clearing site data removes saved work. If browser saving fails, the app gives a notice and keeps downloads available. A malformed current saved entry is preserved and autosave pauses until the student explicitly imports or starts a new project.
+
+Earlier drafts under the original storage key are migrated when possible, keeping the original entry. Match types, assets, student information, targeting, and explanatory text are retained. Migration notes call attention to settings that need review. JSON imports are checked before replacement, are limited to 32 MB, and require confirmation to open.
+
+### For the instructor
+
+Ask students to submit the campaign PDF and, when useful, the project JSON. Written rationale explains the audience, keyword structure, creative, destination, bidding, and budget assumptions. Local activity records are editable and do not prove authorship. Evaluate the choices and explanations yourself; technical completion is not a grade.
 
 ## Run locally
 
-Use Node.js 22.14 or newer within the Node.js 22 release line and npm. From a local checkout:
+Use Node.js 22.14 or newer and npm with the existing npm lockfile:
 
-```sh
+~~~sh
 git clone https://github.com/mralexgarrido/MARK-4360-Search-Ads-Simulator.git
 cd MARK-4360-Search-Ads-Simulator
 npm ci
 npm run dev
-```
+~~~
 
-Open the address printed by Vite. The development server is configured for port 3000 and the `/MARK-4360-Search-Ads-Simulator/` base path.
+For this review branch, check out feat/google-ads-guided-workspace before running the commands. Open the Vite address at /MARK-4360-Search-Ads-Simulator/.
 
-```sh
+~~~sh
+npm test
+npm run typecheck
 npm run build
 npm run preview
-```
+~~~
 
-The build output is **`docs/`**, not `dist/`. It is generated site content, so do not place hand-maintained documentation there. The repository includes both npm and pnpm lockfiles; the commands above use the existing npm lockfile without removing or regenerating either lockfile.
-
-The campaign-planning interface does not require an AI-service account. Historical environment-variable substitutions remain in `vite.config.ts`; do not add privileged API keys to browser code or public build artifacts. This documentation does not change that configuration.
+The build output remains **docs/**. The base path remains **/MARK-4360-Search-Ads-Simulator/**. Both existing lockfiles are retained. The revamp adds no packages or hosted runtime services. React, icons, styles, and teaching content are bundled locally; there are no CDN stylesheets, remote fonts, API requests, or analytics calls in the workspace.
 
 ## Project structure
 
 | Path | Purpose |
 | --- | --- |
-| `App.tsx` | Campaign steps, form state, save/reset behavior, and completion indicators |
-| `components/` | Shared icons, ad preview, and printable campaign view |
-| `types.ts` | Campaign data types and initial values |
-| `vite.config.ts` | Development server, application base path, and output directory |
-| `docs/` | Generated static website |
+| App.tsx | Campaign steps, editing, saving, publication, and submission controls |
+| components/ | Form controls, native dialogs, ad preview, and printable report |
+| types.ts | Campaign, ad-group, ad, and workspace types and initial values |
+| lib/ | Technical requirements, snapshot operations, migration, import, and exports |
+| data/ | Bundled step guides and sample audiences |
+| styles.css | Responsive workspace, keyboard focus, and print styling |
+| tests/ | Native Node tests for campaign rules, persistence, exports, and report rendering |
+| vite.config.ts | Existing base path, development port, and docs output directory |
+| docs/ | Generated static website |
 
-The interface uses React, TypeScript, and Vite. See [package.json](package.json) for the actual scripts and dependencies. No automated test script is currently declared there; a successful build alone is not an end-to-end test.
+The original package manifest does not include React type definitions. The small jsx.d.ts declaration supports React's special JSX key without adding a package. Type checking is therefore not a substitute for browser interaction tests.
 
-## Related teaching tool
+## Teaching references
 
-[`mark4360_gsearch`](https://github.com/mralexgarrido/mark4360_gsearch) is a separate search-advertising simulator repository. Its source, build settings, and saved work are independent. Do not assume fixes or data transfer between the two projects, or that one is an officially retired version of the other.
+Guides are stored in the app and work without loading these pages. Maintainers should periodically compare terminology and field limits against official documentation.
+
+- Google. (n.d.). [About responsive search ads](https://support.google.com/google-ads/answer/7684791?hl=en). Google Ads Help. Retrieved October 1, 2026.
+- Google. (n.d.). [About keyword matching options](https://support.google.com/google-ads/answer/7478529?hl=en). Google Ads Help. Retrieved October 1, 2026.
+- Google. (n.d.). [About Target CPA bidding](https://support.google.com/google-ads/answer/6268632?hl=en). Google Ads Help. Retrieved October 1, 2026.
+- Google. (n.d.). [About overdelivery and your average daily budget](https://support.google.com/google-ads/answer/1704443?hl=en). Google Ads Help. Retrieved October 1, 2026.
 
 ## Support and contributions
 
-For bugs, include the step, expected result, actual result, browser, and a small fictional example in an [issue](https://github.com/mralexgarrido/MARK-4360-Search-Ads-Simulator/issues). Remove student information, credentials, and real campaign data from screenshots. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+For bugs, include the step, expected and actual result, browser, and a fictional example in an [issue](https://github.com/mralexgarrido/MARK-4360-Search-Ads-Simulator/issues). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Maintained by [Alex Garrido](https://github.com/mralexgarrido). Google and Google Ads are trademarks of their respective owner; this project does not imply endorsement. No project-level `LICENSE` file is currently included; contact the repository owner about reuse.
+Maintained by [Alex Garrido](https://github.com/mralexgarrido). Google and Google Ads are trademarks of their respective owner; this project does not imply endorsement. No project-level LICENSE file is included; contact the repository owner about reuse.
