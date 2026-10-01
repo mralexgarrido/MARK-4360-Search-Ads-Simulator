@@ -2,34 +2,52 @@
 
 ## Build and deployment boundaries
 
-`vite.config.ts` sets the base path to `/MARK-4360-Search-Ads-Simulator/`, the development port to 3000, and build output to `docs/`. `npm run build` generates that folder. Keep hand-maintained documentation at the repository root or in a different directory.
+Keep the existing React, TypeScript, Vite, and npm setup. No package was added for the revamp. Vite retains the base path /MARK-4360-Search-Ads-Simulator/, development port 3000, and build output docs/. Build artifacts belong there; hand-maintained documentation belongs elsewhere.
 
-Before deploying, inspect **Settings > Pages** and confirm the actual publishing source and branch. The existence of committed `docs/` output does not by itself prove the dashboard settings. Preserve the existing hosting method; do not add a second deployment workflow as part of a documentation change.
+The workspace uses no external advertising or grading service. Unused API-key substitutions were removed from Vite configuration. Do not add account credentials or privileged API keys to browser code.
 
-For a different hosting path, review `base` against that path on a separate branch and test asset loading before release. Do not copy another simulator's deployment configuration into this repository.
+Before production deployment, inspect Settings > Pages and confirm the actual publishing branch and folder. Committed docs/ output alone does not prove those settings. Preserve the existing hosting method and verify the served bundle after an authorized deployment.
 
-## Local checks before a release
+## Verification
 
-- Run `npm ci` and `npm run build` using the checked-in npm lockfile. Investigate a lockfile mismatch rather than replacing it automatically.
-- Run `npm run preview`, then open the base path printed by Vite.
-- Complete all six campaign steps with fictional data. Confirm the ad preview and review reflect the entered values.
-- Select Save, reload, and confirm the draft returns. Select Start Over, reload, and confirm the saved draft is gone.
-- Check keyboard navigation, tooltip focus, narrow-screen usability, and print preview. Verify no required campaign fields are missing from the printed result.
+~~~sh
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm run preview
+~~~
 
-There is no test script in the current package manifest. Record build checks and manual checks separately, including any check that was not run.
+Use the checked-in npm lockfile. The pnpm lockfile is also retained; do not regenerate or remove it as part of an unrelated change. Native tests require Node.js 22.14 or newer.
 
-## Describe updates clearly
+Tests cover empty and invalid campaigns, bid-specific technical rules, multiple groups and ads, keyword parsing, pinning, counted character limits, publication immutability, legacy migration, JSON version/shape checks, storage failures, safe URL handling, CSV escaping, retention bounds, and complete report rendering. They do not replace browser interaction or print-layout verification.
 
-For each reviewed milestone, write a short release summary covering the user-visible improvement, fixes, limitations, and any migration steps. Tie it to the reviewed commit; do not invent historical release dates or publish untested claims. Publishing a release or tag requires a separate decision from updating this document.
+For manual browser checks:
 
-## Repository presentation checklist
+1. Open an empty workspace. Review should list missing fields and disable publication. Exporting a draft should remain available.
+2. Complete all nine steps with fictional data. Use two groups and two ads, different match types, campaign and group negatives, Spanish, custom locations, an excluded location, a schedule, pinned assets, sitelinks, callouts, and UTM parameters.
+3. Open guides with the keyboard. Escape should close dialogs and restore focus. Inspect labels, focus visibility, the skip link, and the mobile navigation drawer.
+4. Reload after editing and verify autosave. Download JSON, start a new campaign, import the file, and compare every setting and note. A failed or canceled import must keep the existing workspace.
+5. Publish, edit a headline, and confirm the launch snapshot retains the earlier text. Republish, pause, resume, and inspect the recent local history.
+6. Print the current campaign and a selected launch. Inspect all pages for clipping and confirm every ad asset and rationale is included. Historical reports should use captured notes and current student identification.
+7. Check narrow-screen layouts, browser storage failure behavior, and assets served under the repository base path.
 
-Suggested About description: **Practice search advertising campaign planning with an interactive simulator for marketing students.**
+Record actual browser and build checks separately. Do not claim a manual check passed because a build or rendered-markup test passed.
 
-The About website should point to the verified hosted application, not an editor workspace. Suggested topics: `marketing-education`, `search-advertising`, `react`, `typescript`, `vite`.
+## Teaching boundaries
 
-Review the README's app link after a hosting change. Use an actual, current application screenshot without student data when adding a repository social preview. About fields and the social preview are GitHub settings; this file does not configure them.
+The instructor supplies assessment explanations, feedback, and grades. Limit automatic feedback to field requirements, syntax, lengths, and straightforward budget arithmetic. Do not introduce copy scores, rubric grades, predicted results, synthetic auction outcomes, or automated strategic evaluations.
+
+Class notes are documentation and do not affect ad eligibility. Practice publication creates a local snapshot; it does not simulate policy approval or buy media. Audience and location lists are illustrative. Any expanded feature should preserve that distinction.
+
+## Saved work
+
+The v2 workspace uses mark4360_search_ads_workspace_v2. Earlier mark4360_draft entries are retained and migrated when possible. Malformed current saved data pauses autosave to protect that original entry. Browser storage is limited; JSON download remains available on save failure.
+
+Imports validate shape, version, bounds, and identifiers before replacing the active workspace. Each snapshot includes a deep copy of campaign settings and notes. Retain at most ten launches and one hundred activity entries to bound local history. These are editable classroom records, not a secure audit trail.
 
 ## Rollback
 
-Keep documentation work in its own pull request. Before merge, closing the pull request leaves the default branch unchanged. After an approved merge, revert the documentation commit or merge through a new pull request. A documentation merge may still trigger the existing host's build, so retain the previous deployment as the rollback target.
+Review work stays on its feature branch until an approved merge. Closing the draft pull request leaves the default branch unchanged. After an approved merge, revert through a separate pull request and restore the previously approved host deployment if necessary.
+
+Before releasing, record the source commit and the actual serving bundle. The review started from main commit c48f8099b607178ec328254e10d4444dbf16b2ba; the public app served a different bundle at inspection time. See [REVAMP_REVIEW.md](REVAMP_REVIEW.md). Do not assume reverting main automatically restores the previously deployed version.

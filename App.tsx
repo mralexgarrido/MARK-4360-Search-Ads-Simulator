@@ -1,915 +1,427 @@
-import React, { useState, useEffect } from 'react';
-import { INITIAL_STATE, CampaignData } from './types';
-import { 
-    Search, CheckCircle, Save, Printer, RefreshCw, X, Plus, 
-    HelpCircle, ChevronRight, Info, AlertCircle, ChevronDown, 
-    MousePointerClick, Monitor, DollarSign, PenTool, LayoutTemplate, Target,
-    MoreVertical, ArrowRight
-} from './components/Icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { createWorkspace, makeId, newAd, newGroup } from './types';
+import type { AdGroup, BidStrategy, CampaignData, SearchAd, Step, Workspace } from './types';
+import { Search, Save, Printer, Plus, X, ChevronRight, ChevronDown, CheckCircle, Info, RefreshCw } from './components/Icons';
+import { AssetEditor, Check, Field, HelpButton, InfoBox, KeywordEditor, Modal, Section, SelectField, StringList } from './components/UI';
 import { AdPreview } from './components/AdPreview';
-import { PrintView } from './components/PrintView';
+import { CampaignSummary, PrintView } from './components/PrintView';
+import { BID_LABELS, DAYS, hasUnpublishedChanges, landingUrl, publishWorkspace, recordActivity, requirements, usesConversions, usesValue } from './lib/campaign';
+import { decodeProject, loadWorkspace, MAX_FILE_BYTES, projectJson, saveWorkspace } from './lib/storage';
+import { downloadFile, keywordsCsv, safeFileName } from './lib/export';
+import { GUIDES } from './data/guides';
+import { AUDIENCE_CATEGORIES } from './data/audiences';
+import './styles.css';
 
-// --- Data Constants ---
-const AUDIENCE_CATEGORIES = [
-    {
-        id: 'demographics',
-        title: 'Who they are',
-        subtitle: 'Detailed demographics',
-        items: [
-            'Parents: Parents of Infants (0-1 yrs)',
-            'Parents: Parents of Toddlers (1-3 yrs)',
-            'Parents: Parents of Preschoolers (4-5 yrs)',
-            'Marital Status: Single',
-            'Marital Status: In a relationship',
-            'Marital Status: Married',
-            'Education: Current College Students',
-            'Education: Bachelor\'s Degree',
-            'Education: Advanced Degree',
-            'Homeownership: Homeowners',
-            'Homeownership: Renters',
-            'Employment: Construction Industry',
-            'Employment: Education Sector',
-            'Employment: Financial Industry',
-            'Employment: Real Estate Industry',
-            'Employment: Technology Industry'
-        ]
-    },
-    {
-        id: 'affinity',
-        title: 'What their interests and habits are',
-        subtitle: 'Affinity',
-        items: [
-            'Banking & Finance: Avid Investors',
-            'Beauty & Wellness: Beauty Mavens',
-            'Food & Dining: Coffee Shop Regulars',
-            'Food & Dining: Cooking Enthusiasts',
-            'Food & Dining: Foodies',
-            'Lifestyles & Hobbies: Business Professionals',
-            'Lifestyles & Hobbies: Green Living Enthusiasts',
-            'Lifestyles & Hobbies: Outdoor Enthusiasts',
-            'Media & Entertainment: Gamers',
-            'Media & Entertainment: Movie Lovers',
-            'Shoppers: Bargain Hunters',
-            'Shoppers: Luxury Shoppers',
-            'Shoppers: Shopaholics',
-            'Sports & Fitness: Health & Fitness Buffs',
-            'Technology: Technophiles',
-            'Travel: Business Travelers',
-            'Travel: Travel Buffs'
-        ]
-    },
-    {
-        id: 'in_market',
-        title: 'What they are actively researching or planning',
-        subtitle: 'In-market',
-        items: [
-            'Apparel & Accessories',
-            'Autos & Vehicles',
-            'Baby & Children\'s Products',
-            'Beauty & Personal Care',
-            'Business & Industrial Products',
-            'Computers & Peripherals',
-            'Consumer Electronics',
-            'Dating Services',
-            'Education',
-            'Employment',
-            'Financial Services',
-            'Gifts & Occasions',
-            'Home & Garden',
-            'Real Estate',
-            'Software',
-            'Sports & Fitness',
-            'Telecom',
-            'Travel'
-        ]
-    },
-    {
-        id: 'your_data',
-        title: 'How they have interacted with your business',
-        subtitle: 'Your data segments',
-        items: [
-            'Website Visitors: All Visitors (Last 30 Days)',
-            'Website Visitors: Converters (Past Buyers)',
-            'Website Visitors: Cart Abandoners',
-            'Customer List: Email Subscribers',
-            'Customer List: Loyalty Program Members'
-        ]
-    }
+const STEPS: { id: Step; title: string; detail: string }[] = [
+  {id:'campaign',title:'Campaign',detail:'Objective and measurement'},
+  {id:'bidding',title:'Bidding',detail:'Choose the optimization focus'},
+  {id:'settings',title:'Campaign settings',detail:'Networks, locations, and audiences'},
+  {id:'groups',title:'Ad groups & keywords',detail:'Structure and search intentions'},
+  {id:'ads',title:'Ads',detail:'Responsive search ads'},
+  {id:'assets',title:'Assets & URL options',detail:'Sitelinks, callouts, and tracking'},
+  {id:'budget',title:'Budget',detail:'Average daily spending'},
+  {id:'review',title:'Review & publish',detail:'Check the campaign configuration'},
+  {id:'submission',title:'Class submission',detail:'Document and export your work'}
 ];
+const options = (pairs: [string,string][]) => pairs.map(([value,label]) => ({value,label}));
+const money = (v: number) => Number.isFinite(v) ? v.toLocaleString('en-US',{style:'currency',currency:'USD'}) : 'Enter a budget';
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
-// --- Reusable UI Components ---
-
-const InfoTooltip = ({ text }: { text: string }) => (
-    <button
-        type="button"
-        className="group relative inline-block ml-1 align-middle rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-        aria-label={text}
-        onClick={(e) => e.preventDefault()}
-    >
-        <HelpCircle size={14} className="text-gray-400 group-hover:text-gray-600 group-focus:text-gray-600 cursor-help" />
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs p-3 rounded shadow-lg opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity pointer-events-none z-50 leading-relaxed text-left font-normal">
-            {text}
-            <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></span>
-        </span>
-    </button>
-);
-
-const SidebarItem = ({ id, label, active, completed, onClick }: any) => (
-    <button 
-        onClick={() => onClick(id)}
-        className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors border-l-4 ${active ? 'bg-blue-50 text-blue-700 border-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-100 border-transparent'}`}
-    >
-        <div className="flex items-center gap-3">
-            {completed ? (
-                <CheckCircle size={18} className="text-green-600" />
-            ) : (
-                <div className={`w-4 h-4 rounded-full border-2 ${active ? 'border-blue-600' : 'border-gray-400'}`}></div>
-            )}
-            {label}
-        </div>
-    </button>
-);
-
-const StepContainer = ({ title, children }: { title: string, children?: React.ReactNode }) => (
-    <div className="max-w-4xl mx-auto">
-        <h2 className="text-2xl text-[#202124] font-google font-normal mb-6">{title}</h2>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {children}
-        </div>
+function AudiencePicker({ campaign, onChange }: { campaign: CampaignData; onChange: (segments: string[]) => void }) {
+  const [query,setQuery] = useState('');
+  const selected = campaign.audienceSegments;
+  const toggle = (value: string) => onChange(selected.includes(value) ? selected.filter(s => s !== value) : [...selected,value]);
+  return <div className="audience-widget">
+    <div><Field label="Search sample audience segments" value={query} onChange={setQuery} maxLength={100} placeholder="Search the bundled practice list"/>
+      <div className="audience-list">{AUDIENCE_CATEGORIES.map(category => {
+        const filtered = category.items.filter(item => (item + ' ' + category.title).toLowerCase().includes(query.toLowerCase()));
+        if (!filtered.length) return null;
+        return <details key={category.id} open={query ? true : undefined}><summary>{category.title}<small>{category.subtitle}</small></summary>
+          <div>{filtered.map(item => <Check key={item} label={item} checked={selected.includes(item)} onChange={() => toggle(item)}/>)}</div>
+        </details>;
+      })}
+      {!AUDIENCE_CATEGORIES.some(category => category.items.some(item => (item + ' ' + category.title).toLowerCase().includes(query.toLowerCase()))) && <p>No sample segments match this search.</p>}</div>
+    </div><div className="audience-selected"><div className="section-row"><h3>{selected.length} selected</h3>{selected.length > 0 && <button type="button" className="button text-button" onClick={() => onChange([])}>Clear all</button>}</div>
+      {!selected.length && <p className="field-hint">Audience selection is optional.</p>}
+      <div className="chips">{selected.map(item => <span className="chip" key={item}>{item}<button type="button" aria-label={'Remove ' + item} onClick={() => toggle(item)}><X size={15}/></button></span>)}</div>
     </div>
-);
-
-const FormSection = ({ title, children, isOpen = true }: { title: string, children?: React.ReactNode, isOpen?: boolean }) => (
-    <div className="border-b border-gray-200 last:border-0">
-        <div className="px-6 py-4 flex items-center justify-between cursor-pointer bg-white hover:bg-gray-50">
-            <h3 className="text-base font-medium text-gray-800">{title}</h3>
-            <ChevronDown size={20} className={`text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </div>
-        {isOpen && <div className="px-6 pb-8 pt-2">{children}</div>}
-    </div>
-);
+  </div>;
+}
 
 export default function App() {
-  const [activeStep, setActiveStep] = useState('bidding');
-  const [data, setData] = useState<CampaignData>(INITIAL_STATE);
-  
-  // UI State for Audience Segment
-  const [audienceTab, setAudienceTab] = useState<'search' | 'browse'>('browse');
-  const [openAudienceCategory, setOpenAudienceCategory] = useState<string | null>(null);
+  const [initial] = useState(() => {
+    try { return {...loadWorkspace(window.localStorage),blocked:false}; }
+    catch { return {workspace:createWorkspace(),note:'The saved draft could not be restored. It has not been replaced. Import a project or start a new campaign to resume saving.',blocked:true}; }
+  });
+  const [workspace,setWorkspace] = useState<Workspace>(initial.workspace);
+  const [step,setStep] = useState<Step>('campaign'), [visited,setVisited] = useState<Set<Step>>(new Set(['campaign']));
+  const [groupId,setGroupId] = useState(initial.workspace.campaign.adGroups[0].id);
+  const [adId,setAdId] = useState(initial.workspace.campaign.adGroups[0].ads[0].id);
+  const [guide,setGuide] = useState<Step|null>(null), [menuOpen,setMenuOpen] = useState(false);
+  const [dialog,setDialog] = useState<'publish'|'reset'|null>(null);
+  const [deletion,setDeletion] = useState<{kind:'group'|'ad';id:string}|null>(null);
+  const [pendingImport,setPendingImport] = useState<Workspace|null>(null);
+  const [saving,setSaving] = useState(initial.blocked ? 'Autosave paused' : 'Saved in this browser');
+  const [savePaused,setSavePaused] = useState(initial.blocked), [notice,setNotice] = useState(initial.note);
+  const [reportId,setReportId] = useState('current');
+  const fileInput = useRef<HTMLInputElement>(null), heading = useRef<HTMLHeadingElement>(null), latest = useRef(workspace);
+  const sidebarRef = useRef<HTMLElement>(null), menuButton = useRef<HTMLButtonElement>(null);
+  latest.current = workspace;
+  const campaign = workspace.campaign;
+  const group = campaign.adGroups.find(g => g.id === groupId) || campaign.adGroups[0];
+  const ad = group.ads.find(a => a.id === adId) || group.ads[0];
+  const missing = requirements(campaign);
+  const currentIndex = STEPS.findIndex(s => s.id === step);
+  const selectedSnapshot = workspace.launches.find(s => s.id === reportId);
+  const reportCampaign = selectedSnapshot?.campaign || campaign;
+  const changed = hasUnpublishedChanges(workspace);
+  const help = () => setGuide(step);
 
-  // Load from local storage
   useEffect(() => {
-    const saved = localStorage.getItem('mark4360_draft');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setData({ ...INITIAL_STATE, ...parsed });
-      } catch (e) { console.error(e); }
-    }
-  }, []);
+    if (savePaused) return;
+    setSaving('Saving…');
+    const timeout = window.setTimeout(() => {
+      try { saveWorkspace(window.localStorage,workspace); setSaving('Saved in this browser'); }
+      catch { setSaving('Browser save unavailable'); setNotice('Browser storage is unavailable or full. Download your project JSON to keep your work; you can also retry Save now.'); }
+    },650);
+    return () => window.clearTimeout(timeout);
+  },[workspace,savePaused]);
+  useEffect(() => {
+    const flush = () => { if (!savePaused) { try { saveWorkspace(window.localStorage,latest.current); } catch {} } };
+    const hidden = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide',flush); document.addEventListener('visibilitychange',hidden);
+    return () => { window.removeEventListener('pagehide',flush); document.removeEventListener('visibilitychange',hidden); };
+  },[savePaused]);
+  useEffect(() => { heading.current?.focus(); },[step]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const sidebar = sidebarRef.current as HTMLElement | null;
+    const controls = () => Array.from(sidebar?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || []);
+    controls()[0]?.focus();
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setMenuOpen(false); return; }
+      if (event.key !== 'Tab') return;
+      const items = controls(), first = items[0], last = items[items.length-1];
+      if (event.shiftKey && document.activeElement === first) {event.preventDefault();last?.focus();}
+      else if (!event.shiftKey && document.activeElement === last) {event.preventDefault();first?.focus();}
+    };
+    const resize = () => { if (window.innerWidth > 760) setMenuOpen(false); };
+    document.addEventListener('keydown',keys);window.addEventListener('resize',resize);
+    return () => {document.removeEventListener('keydown',keys);window.removeEventListener('resize',resize);menuButton.current?.focus();};
+  },[menuOpen]);
 
-  const handleSave = () => {
-    localStorage.setItem('mark4360_draft', JSON.stringify(data));
-    alert('Progress saved to browser storage!');
+  const go = (next: Step, targetGroup?: string, targetAd?: string) => {
+    if (targetGroup) setGroupId(targetGroup);
+    if (targetAd) setAdId(targetAd);
+    setStep(next); setVisited(v => new Set([...v,next])); setMenuOpen(false);
+    window.scrollTo({top:0,behavior:'auto'});
   };
-
-  const handleReset = () => {
-    if(confirm('Start a new campaign? Current progress will be lost.')) {
-        setData(INITIAL_STATE);
-        localStorage.removeItem('mark4360_draft');
-        setActiveStep('bidding');
-    }
+  const mutate = (fn: (c: CampaignData) => CampaignData, action?: string, detail = '') => setWorkspace(prev => {
+    const next = {...prev,campaign:fn(prev.campaign),updatedAt:new Date().toISOString()};
+    return action ? recordActivity(next,action,detail) : next;
+  });
+  const field = <K extends keyof CampaignData>(key: K, value: CampaignData[K]) => mutate(c => ({...c,[key]:value}));
+  const groupField = <K extends keyof AdGroup>(key: K, value: AdGroup[K]) => mutate(c => ({...c,adGroups:c.adGroups.map(g => g.id === group.id ? {...g,[key]:value} : g)}));
+  const adField = <K extends keyof SearchAd>(key: K, value: SearchAd[K]) => mutate(c => ({...c,adGroups:c.adGroups.map(g => g.id === group.id ? {...g,ads:g.ads.map(a => a.id === ad.id ? {...a,[key]:value} : a)} : g)}));
+  const saveNow = () => {
+    if (savePaused) { setNotice('Saving is paused to keep the unreadable original entry. Import a project or start a new campaign first.'); return; }
+    try { saveWorkspace(window.localStorage,workspace); setSaving('Saved in this browser'); setNotice('Your current workspace is saved in this browser.'); }
+    catch { setSaving('Browser save unavailable'); setNotice('Browser storage is unavailable. Download a project JSON to keep your work.'); }
   };
-
-  const updateField = (field: keyof CampaignData, value: any) => {
-    setData(prev => ({ ...prev, [field]: value }));
+  const exportProject = () => {
+    const next = recordActivity(workspace,'Downloaded project','Exported campaign, class notes, activity, and launch snapshots as JSON.');
+    setWorkspace(next);
+    downloadFile(projectJson(next),safeFileName(campaign.campaignName) + '.search-ads.json','application/json');
+    setNotice('Project JSON downloaded. Import it here to continue on another device.');
   };
-
-  // Keyword handling
-  const handleKeywordChange = (text: string) => {
-    updateField('rawKeywords', text);
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    updateField('keywords', lines);
+  const importFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = '';
+    if (!file) return;
+    try {
+      if (file.size > MAX_FILE_BYTES) throw new Error('Choose a project file smaller than 32 MB.');
+      setPendingImport(decodeProject(await file.text()));
+    } catch (e) { setNotice('Import failed: ' + (e as Error).message + ' Your current campaign was kept.'); }
   };
-
-  // Asset handling
-  const addAsset = (type: 'headlines' | 'descriptions', value: string) => {
-    if (!value.trim()) return;
-    setData(prev => ({ ...prev, [type]: [...prev[type], value] }));
+  const addGroup = () => {
+    const created = newGroup('Ad group ' + (campaign.adGroups.length+1));
+    mutate(c => ({...c,adGroups:[...c.adGroups,created]}),'Added ad group',created.name);
+    setGroupId(created.id); setAdId(created.ads[0].id);
   };
-  const removeAsset = (type: 'headlines' | 'descriptions', index: number) => {
-    setData(prev => ({ ...prev, [type]: prev[type].filter((_, i) => i !== index) }));
+  const duplicateGroup = () => {
+    const copy = clone(group); copy.id = makeId(); copy.name = group.name + ' (copy)';
+    copy.keywords = copy.keywords.map(k => ({...k,id:makeId()})); copy.negativeKeywords = copy.negativeKeywords.map(k => ({...k,id:makeId()}));
+    copy.ads = copy.ads.map(a => ({...a,id:makeId()}));
+    mutate(c => ({...c,adGroups:[...c.adGroups,copy]}),'Duplicated ad group',copy.name);
+    setGroupId(copy.id); setAdId(copy.ads[0].id);
   };
-
-  // Audience handling
-  const toggleAudienceSegment = (segment: string) => {
-    setData(prev => {
-        const exists = prev.audienceSegments.includes(segment);
-        return {
-            ...prev,
-            audienceSegments: exists 
-                ? prev.audienceSegments.filter(s => s !== segment)
-                : [...prev.audienceSegments, segment]
-        };
-    });
+  const addAd = (duplicate = false) => {
+    const created = duplicate ? {...clone(ad),id:makeId(),name:ad.name + ' (copy)'} : newAd('Responsive search ad ' + (group.ads.length+1));
+    mutate(c => ({...c,adGroups:c.adGroups.map(g => g.id === group.id ? {...g,ads:[...g.ads,created]} : g)}),
+      duplicate ? 'Duplicated ad' : 'Added ad',group.name + ' / ' + created.name);
+    setAdId(created.id);
   };
+  const groupSelector = <SelectField label="Ad group" value={group.id} onChange={id => {setGroupId(id);setAdId(campaign.adGroups.find(g => g.id === id)!.ads[0].id);}}
+    options={campaign.adGroups.map(g => ({value:g.id,label:g.name || 'Unnamed ad group'}))}/>;
+  const classRationale = (key: keyof CampaignData['rationale'],label: string) => <details className="class-notes"><summary>Class notes for instructor review</summary>
+    <Field label={label} value={campaign.rationale[key]} onChange={value => field('rationale',{...campaign.rationale,[key]:value})} multiline hint="Record your reasoning. Your instructor provides the evaluation."/></details>;
 
-  // Ad Strength Calculation
-  const adStrength = Math.min(100, 
-    (data.headlines.length * 10) + 
-    (data.descriptions.length * 15) + 
-    (data.finalUrl ? 10 : 0) +
-    (data.keywords.length > 0 ? 10 : 0)
-  );
-
-  const getStepStatus = (step: string) => {
-      // Simple validation logic for checkboxes
-      switch(step) {
-          case 'bidding': return !!data.biddingFocus;
-          case 'settings': return data.locationOption !== undefined;
-          case 'keywords': return data.keywords.length > 0;
-          case 'ads': return data.headlines.length >= 3 && data.descriptions.length >= 2;
-          case 'budget': return !!data.budgetAmount;
-          case 'review': return !!data.studentName;
-          default: return false;
-      }
-  };
-
-  return (
-    <div className="flex h-screen bg-[#f0f2f5] font-roboto overflow-hidden">
-      
-      {/* --- Left Sidebar (Google Ads Navigation Style) --- */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col no-print z-20">
-        <div className="h-16 flex items-center px-4 border-b border-gray-100">
-             <div className="text-[#5f6368] mr-3"><Search size={24} /></div>
-             <span className="font-google text-lg text-gray-700 leading-tight">Mark 4360 <br/><span className="text-xs font-normal">Search Ads Simulator</span></span>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto py-4">
-             <div className="px-4 mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Campaign Steps</div>
-             <SidebarItem id="bidding" label="Bidding" active={activeStep === 'bidding'} completed={getStepStatus('bidding')} onClick={setActiveStep} />
-             <SidebarItem id="settings" label="Campaign settings" active={activeStep === 'settings'} completed={getStepStatus('settings')} onClick={setActiveStep} />
-             <SidebarItem id="keywords" label="Keywords" active={activeStep === 'keywords'} completed={getStepStatus('keywords')} onClick={setActiveStep} />
-             <SidebarItem id="ads" label="Ads" active={activeStep === 'ads'} completed={getStepStatus('ads')} onClick={setActiveStep} />
-             <SidebarItem id="budget" label="Budget" active={activeStep === 'budget'} completed={getStepStatus('budget')} onClick={setActiveStep} />
-             <SidebarItem id="review" label="Review" active={activeStep === 'review'} completed={getStepStatus('review')} onClick={setActiveStep} />
-        </nav>
-
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-            <div className="text-xs text-gray-500 mb-3">
-                <strong>Educational Mode</strong><br/>
-                Hover over <HelpCircle size={10} className="inline text-gray-400"/> icons for context.
-            </div>
-            <div className="flex gap-2">
-                <button onClick={handleSave} className="flex-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded hover:bg-blue-200">Save</button>
-                <button onClick={() => window.print()} className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50">Print PDF</button>
-            </div>
-        </div>
+  return <>
+    <a className="skip-link" href="#workspace-main">Skip to campaign workspace</a>
+    <div className="app-shell no-print">
+      {menuOpen && <button type="button" className="sidebar-backdrop" aria-label="Close campaign navigation" tabIndex={-1} onClick={() => setMenuOpen(false)}/>}
+      <aside id="campaign-navigation" ref={sidebarRef} className={'sidebar ' + (menuOpen ? 'open' : '')} aria-label="Campaign navigation" role={menuOpen ? 'dialog' : undefined} aria-modal={menuOpen || undefined}>
+        <div className="brand"><span className="brand-symbol"><Search size={24}/></span><div><strong>Search Ads</strong><span>MARK 4360 workspace</span></div></div>
+        <button type="button" className="icon-button drawer-close" aria-label="Close campaign navigation" onClick={() => setMenuOpen(false)}><X size={20}/></button>
+        <div className="sidebar-label">Create a Search campaign</div>
+        <nav aria-label="Campaign steps">{STEPS.map((s,i) => <button type="button" key={s.id} className={'nav-item ' + (step === s.id ? 'active' : '')}
+          aria-current={step === s.id ? 'step' : undefined} onClick={() => go(s.id)}>
+          <span className={'step-number ' + (visited.has(s.id) ? 'viewed' : '')}>{i+1}</span><span>{s.title}</span>
+        </button>)}</nav>
+        <div className="sidebar-footer"><strong>Your instructor is the grader.</strong><p>Use the guides to understand the controls. Document the decisions you make.</p>
+          <button type="button" className="button secondary" onClick={exportProject}><Save size={16}/>Download project</button></div>
       </aside>
+      <div className="workspace-column">
+        <header className="topbar"><div className="topbar-title"><button type="button" ref={menuButton} className="icon-button mobile-menu" aria-label="Toggle campaign navigation" aria-controls="campaign-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(v => !v)}><ChevronDown size={22}/></button>
+          <span className="campaign-breadcrumb">Campaigns <ChevronRight size={14}/><strong>{campaign.campaignName || 'New campaign'}</strong></span>
+          <span className={'status-pill ' + workspace.status}>{workspace.status === 'draft' ? 'Draft' : workspace.status === 'enabled' ? 'Enabled · practice' : 'Paused · practice'}</span>
+          {changed && <span className="changes-label">Unpublished changes</span>}
+        </div><div className="topbar-actions"><span className="save-status" role="status">{saving}</span>
+          <button type="button" className="button text-button" onClick={saveNow}><Save size={16}/>Save now</button>
+          <button type="button" className="button text-button" onClick={() => fileInput.current?.click()}>Import project</button>
+          <button type="button" className="button text-button" onClick={() => setDialog('reset')}><RefreshCw size={15}/>Start new</button>
+        </div></header>
+        <div className="education-strip"><Info size={16}/><span>Independent educational workspace. Publication stays here; no ads or payments are sent.</span></div>
+        {notice && <div className="notice" role="status"><span>{notice}</span><button type="button" className="icon-button" aria-label="Dismiss notice" onClick={() => setNotice('')}><X size={18}/></button></div>}
+        <main id="workspace-main" className="main-content">
+          <div className="page-heading"><div><p className="eyebrow">Campaign creation · Search</p><h1 tabIndex={-1} ref={heading}>{STEPS[currentIndex].title}</h1><p>{STEPS[currentIndex].detail}</p></div>
+            <button type="button" className="button secondary" onClick={help}><Info size={17}/>Step guide</button></div>
+          <InfoBox title={GUIDES[step].title} action={help}>{GUIDES[step].intro}</InfoBox>
 
-      {/* --- Main Content Area --- */}
-      <main className="flex-1 overflow-y-auto relative no-print">
-        <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-            <h1 className="text-xl font-google text-[#202124]">
-                {activeStep === 'bidding' && 'Bidding'}
-                {activeStep === 'settings' && 'Campaign Settings'}
-                {activeStep === 'keywords' && 'Keywords and assets'}
-                {activeStep === 'ads' && 'Create ads'}
-                {activeStep === 'budget' && 'Budget'}
-                {activeStep === 'review' && 'Review'}
-            </h1>
-            <div className="flex gap-3">
-                <button onClick={handleReset} className="text-gray-500 hover:text-gray-700 flex items-center gap-1 text-sm"><RefreshCw size={14}/> Start Over</button>
-            </div>
-        </header>
+          {step === 'campaign' && <>
+            <Section title="Campaign objective" help={help}>
+              <Field label="Campaign name" value={campaign.campaignName} onChange={v => field('campaignName',v)} required maxLength={200} placeholder="A clear name for this campaign"/>
+              <fieldset className="objective-fieldset"><legend>What is the goal of your campaign?</legend><div className="objective-grid">
+                {options([['leads','Leads'],['sales','Sales'],['traffic','Website traffic'],['no_guidance',"Without a goal's guidance"]]).map(o =>
+                  <label className={'objective-card ' + (campaign.objective === o.value ? 'selected' : '')} key={o.value}><input type="radio" name="objective" checked={campaign.objective === o.value} onChange={() => field('objective',o.value as CampaignData['objective'])}/><strong>{o.label}</strong>
+                    <span>{{leads:'Encourage inquiries or signups',sales:'Encourage customer purchases',traffic:'Bring visitors to the website',no_guidance:'Choose the settings yourself'}[o.value]}</span></label>)}
+              </div></fieldset><p className="field-hint">Campaign type: Search. The objective does not automatically choose your strategy.</p>
+            </Section>
+            <Section title="Conversion and measurement plan" help={help}>
+              <Field label="Primary conversion action" value={campaign.conversionAction} onChange={v => field('conversionAction',v)} required={usesConversions(campaign)} maxLength={200} placeholder="For example: completed booking or submitted inquiry"
+                hint="Define the action you would track in the real account."/>
+              <SelectField label="How would conversion value be supplied?" value={campaign.conversionValueMode} onChange={v => field('conversionValueMode',v as CampaignData['conversionValueMode'])}
+                options={options([['fixed','A fixed value for each conversion'],['dynamic','A transaction-specific value']])}/>
+              {campaign.conversionValueMode === 'fixed' && <Field label="Conversion value (USD)" type="number" value={campaign.conversionValue} onChange={v => field('conversionValue',v)} min={0} required={usesValue(campaign)} hint="An assumption for the measurement plan; explain how you obtained it."/>}
+              <Field label="Measurement plan" value={campaign.measurementPlan} onChange={v => field('measurementPlan',v)} multiline placeholder="Where would the event be recorded, and how would you test it?"/>
+              <InfoBox title="Tracking in a real account" tone="neutral">Conversion-based bidding relies on configured conversion tracking. These entries document a plan for instructor review; they do not install a tag or verify a website.</InfoBox>
+            </Section>
+            <Section title="Business context for class" description="These notes help your instructor evaluate the campaign.">
+              <Field label="Business or organization" value={campaign.businessName} onChange={v => field('businessName',v)} maxLength={200}/>
+              <Field label="Business brief and offer" value={campaign.businessBrief} onChange={v => field('businessBrief',v)} multiline placeholder="Describe the offer, intended customer, service area, and desired outcome."/>
+            </Section>
+          </>}
 
-        <div className="p-8 pb-32">
-            
-            {/* --- Step 1: Bidding --- */}
-            {activeStep === 'bidding' && (
-                <StepContainer title="Bidding">
-                    <FormSection title="Bidding Strategy">
-                        <div className="space-y-6 max-w-2xl">
-                            <p className="text-sm text-gray-600">Select how you want to pay for your ads. This determines how Google's AI optimizes your campaign.</p>
-                            
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">What do you want to focus on? <InfoTooltip text="Conversions = Sales/Leads. Clicks = Traffic to website." /></label>
-                                <select 
-                                    className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded hover:border-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors text-gray-900"
-                                    value={data.biddingFocus}
-                                    onChange={(e) => updateField('biddingFocus', e.target.value)}
-                                >
-                                    <option value="conversions">Conversions</option>
-                                    <option value="conversion_value">Conversion value</option>
-                                    <option value="clicks">Clicks</option>
-                                    <option value="impression_share">Impression share</option>
-                                </select>
-                            </div>
+          {step === 'bidding' && <Section title="Bidding strategy" help={help}>
+            <SelectField label="Select a bid strategy" value={campaign.biddingStrategy} onChange={v => field('biddingStrategy',v as BidStrategy)}
+              options={Object.entries(BID_LABELS).map(([value,label]) => ({value,label}))}/>
+            {campaign.biddingStrategy === 'target_cpa' && <Field label="Target CPA (USD)" type="number" min={0} value={campaign.targetCpa} onChange={v => field('targetCpa',v)} required hint="Desired average cost per conversion. Individual conversions can cost more or less."/>}
+            {campaign.biddingStrategy === 'target_roas' && <Field label="Target ROAS (%)" type="number" min={0} value={campaign.targetRoas} onChange={v => field('targetRoas',v)} required hint="400% represents $4 in reported conversion value for each $1 in ad cost."/>}
+            {campaign.biddingStrategy === 'target_impression_share' && <>
+              <SelectField label="Where do you want your ads to appear?" value={campaign.impressionPlacement} onChange={v => field('impressionPlacement',v as CampaignData['impressionPlacement'])}
+                options={options([['anywhere','Anywhere on the results page'],['top','Top of the results page'],['absolute_top','Absolute top of the results page']])}/>
+              <Field label="Target impression share (%)" type="number" min={1} max={100} value={campaign.impressionShare} onChange={v => field('impressionShare',v)} required/>
+            </>}
+            {['maximize_clicks','target_impression_share'].includes(campaign.biddingStrategy) && <Field label="Maximum CPC bid limit (USD)" type="number" min={0} value={campaign.cpcLimit} onChange={v => field('cpcLimit',v)}
+              required={campaign.biddingStrategy === 'target_impression_share'} hint={campaign.biddingStrategy === 'maximize_clicks' ? 'Optional maximum click bid.' : 'Upper limit for click bids while pursuing your impression-share target.'}/>}
+            {campaign.biddingStrategy === 'manual_cpc' && <InfoBox title="Set bids at the ad-group level">Open Ad groups & keywords to enter each group’s default maximum CPC bid.</InfoBox>}
+            {usesConversions(campaign) && <InfoBox title="Connect bidding to measurement">Primary conversion: <strong>{campaign.conversionAction || 'Not yet defined'}</strong>. <button type="button" className="inline-link" onClick={() => go('campaign')}>Review the measurement plan</button></InfoBox>}
+            {classRationale('budget','Why does this bidding strategy fit the objective?')}
+          </Section>}
 
-                            <div className="pt-2">
-                                <label className="flex items-start gap-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white"
-                                        checked={data.setTargetCpa}
-                                        onChange={(e) => updateField('setTargetCpa', e.target.checked)}
-                                    />
-                                    <div>
-                                        <span className="text-sm text-gray-800">Set a target cost per action (optional)</span>
-                                        <p className="text-xs text-gray-500 mt-0.5">Tell Google the maximum amount you're willing to pay for a conversion.</p>
-                                    </div>
-                                </label>
+          {step === 'settings' && <>
+            <Section title="Networks" help={help}><p className="fixed-setting"><CheckCircle size={18}/>Google Search</p>
+              <Check label="Include Google search partners" checked={campaign.networkSearchPartners} onChange={v => field('networkSearchPartners',v)} hint="Extend eligibility to partner search properties."/>
+            </Section>
+            <Section title="Locations and languages" help={help}>
+              <SelectField label="Included locations" value={campaign.locationOption} onChange={v => field('locationOption',v as CampaignData['locationOption'])}
+                options={options([['all','All countries and territories'],['us_ca','United States and Canada'],['us','United States'],['custom','Enter locations']])}/>
+              {campaign.locationOption === 'custom' && <StringList label="Add included locations" items={campaign.locations} onChange={v => field('locations',v)} placeholder="City, region, postal code, or a documented radius"/>}
+              <StringList label="Excluded locations" items={campaign.excludedLocations} onChange={v => field('excludedLocations',v)} placeholder="Add an excluded location"/>
+              <p className="field-hint">Location entries are planning selections. Check geography and radius coverage in the real platform.</p>
+              <SelectField label="Location option" value={campaign.locationPresence} onChange={v => field('locationPresence',v as CampaignData['locationPresence'])}
+                options={options([['presence_interest','Presence or interest: people in, regularly in, or interested in included locations'],['presence','Presence: people in or regularly in included locations']])}/>
+              <fieldset><legend>Languages</legend><div className="inline-checks">{['English','Spanish'].map(language => <Check key={language} label={language} checked={campaign.languages.includes(language)}
+                onChange={checked => field('languages',checked ? [...campaign.languages,language] : campaign.languages.filter(l => l !== language))}/>)}</div></fieldset>
+              <StringList label="Additional languages" items={campaign.languages.filter(l => !['English','Spanish'].includes(l))} onChange={v => field('languages',[...campaign.languages.filter(l => ['English','Spanish'].includes(l)),...v])} placeholder="Add a language" limit={20}/>
+            </Section>
+            <Section title="Dates and ad schedule" help={help}>
+              <div className="two-columns"><Field label="Start date" type="date" value={campaign.startDate} onChange={v => field('startDate',v)} hint="Optional in this planning workspace."/>
+                <Field label="End date" type="date" value={campaign.endDate} onChange={v => field('endDate',v)} hint="Leave empty for no end date."/></div>
+              <SelectField label="Account time zone" value={campaign.timeZone} onChange={v => field('timeZone',v)}
+                options={[...new Set([campaign.timeZone,'America/Chicago','America/New_York','America/Denver','America/Los_Angeles','America/Mexico_City','Europe/Madrid','UTC'])].map(value => ({value,label:value}))}
+                hint="This is the account context used for schedule times, not an ad delivery switch."/>
+              {!campaign.schedules.length && <p className="field-hint">All days and all hours are eligible unless you add a schedule.</p>}
+              {campaign.schedules.map((schedule,i) => <div className="schedule-row" key={schedule.id}>
+                <fieldset><legend>Schedule {i+1} days</legend><div className="day-buttons">{DAYS.map(day => <label key={day}><input type="checkbox" checked={schedule.days.includes(day)}
+                  onChange={e => field('schedules',campaign.schedules.map(s => s.id === schedule.id ? {...s,days:e.target.checked ? [...s.days,day] : s.days.filter(d => d !== day)} : s))}/>{day}</label>)}</div></fieldset>
+                <div className="inline-form"><Field label={'Schedule ' + (i+1) + ' start'} type="time" value={schedule.start} onChange={v => field('schedules',campaign.schedules.map(s => s.id === schedule.id ? {...s,start:v} : s))}/>
+                  <Field label={'Schedule ' + (i+1) + ' end'} value={schedule.end} maxLength={5} placeholder="17:00" hint="HH:MM in 24-hour time. Use 24:00 for midnight." onChange={v => field('schedules',campaign.schedules.map(s => s.id === schedule.id ? {...s,end:v} : s))}/>
+                  <button type="button" className="icon-button" aria-label={'Remove schedule ' + (i+1)} onClick={() => field('schedules',campaign.schedules.filter(s => s.id !== schedule.id))}><X size={18}/></button></div>
+              </div>)}
+              {campaign.schedules.length < 30 && <button type="button" className="button secondary" onClick={() => field('schedules',[...campaign.schedules,{id:makeId(),days:DAYS.slice(0,5),start:'09:00',end:'17:00'}])}><Plus size={16}/>Add schedule</button>}
+            </Section>
+            <Section title="Audience segments" help={help} description="Explore a bundled sample list, then choose how the selections affect eligibility.">
+              <AudiencePicker campaign={campaign} onChange={v => field('audienceSegments',v)}/>
+              <SelectField label="Audience setting" value={campaign.audienceMode} onChange={v => field('audienceMode',v as CampaignData['audienceMode'])}
+                options={options([['observation','Observation: gather audience reporting without narrowing eligibility'],['targeting','Targeting: restrict eligibility to selected audience segments']])}/>
+              {campaign.audienceMode === 'targeting' && !campaign.audienceSegments.length && <InfoBox title="Audience selection" tone="amber">No audience segments have been selected. Review what restriction you intend before publishing.</InfoBox>}
+              {classRationale('audience','Explain your audience, location, language, and schedule choices.')}
+            </Section>
+          </>}
 
-                                {data.setTargetCpa && (
-                                    <div className="mt-4 ml-7">
-                                        <label className="block text-xs text-gray-600 mb-1">Target CPA</label>
-                                        <div className="relative w-40">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">$</div>
-                                            <input 
-                                                type="number" 
-                                                className="block w-full pl-6 pr-3 py-2 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm bg-white text-gray-900"
-                                                value={data.targetCpaAmount}
-                                                onChange={(e) => updateField('targetCpaAmount', e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </FormSection>
-                </StepContainer>
-            )}
+          {step === 'groups' && <>
+            <Section title="Ad-group structure" help={help}><div className="group-toolbar">{groupSelector}
+              <div className="button-row"><button type="button" className="button secondary" onClick={addGroup} disabled={campaign.adGroups.length >= 20}><Plus size={16}/>Add ad group</button>
+                <button type="button" className="button text-button" onClick={duplicateGroup} disabled={campaign.adGroups.length >= 20}>Duplicate group</button>
+                <button type="button" className="button text-button danger" disabled={campaign.adGroups.length === 1} onClick={() => setDeletion({kind:'group',id:group.id})}>Remove group</button></div></div>
+              <Field label="Ad-group name" value={group.name} onChange={v => groupField('name',v)} maxLength={200} required/>
+              <Field label="Search-intent note for class" value={group.intentNote} onChange={v => groupField('intentNote',v)} multiline hint="What customer searches should the ads in this group answer?"/>
+              {campaign.biddingStrategy === 'manual_cpc' && <Field label="Default maximum CPC bid (USD)" type="number" min={0} value={group.defaultCpc} onChange={v => groupField('defaultCpc',v)} required/>}
+            </Section>
+            <Section title="Keywords" help={help}><KeywordEditor key={group.id + '-positive'} label="Add keywords to this ad group" keywords={group.keywords} onChange={v => groupField('keywords',v)}/></Section>
+            <Section title="Negative keywords for this ad group" help={help}><KeywordEditor key={group.id + '-negative'} label="Add ad-group negative keywords" keywords={group.negativeKeywords} onChange={v => groupField('negativeKeywords',v)} negative/></Section>
+            <Section title="Campaign negative keywords" help={help}><KeywordEditor label="Add campaign negative keywords" keywords={campaign.negativeKeywords} onChange={v => field('negativeKeywords',v)} negative/>
+              {classRationale('keywords','Explain the grouping, match types, and exclusions you chose.')}
+            </Section>
+          </>}
 
-            {/* --- Step 2: Settings --- */}
-            {activeStep === 'settings' && (
-                <StepContainer title="Campaign Settings">
-                    <FormSection title="Networks">
-                        <div className="space-y-4">
-                            <div className="p-4 border border-gray-200 rounded hover:border-blue-500 transition-colors bg-white">
-                                <label className="flex gap-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded bg-white"
-                                        checked={data.networkSearchPartners}
-                                        onChange={(e) => updateField('networkSearchPartners', e.target.checked)}
-                                    />
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-800">Google Search Partners</span>
-                                            <span className="text-xs text-gray-500">(Recommended)</span>
-                                        </div>
-                                        <p className="text-sm text-gray-500 mt-1">Ads can appear near Google Search results and on other Google sites like YouTube.</p>
-                                    </div>
-                                </label>
-                            </div>
+          {step === 'ads' && <div className="ad-workspace"><div className="ad-form-column">
+            <Section title="Responsive search ad" help={help}>
+              <div className="two-columns">{groupSelector}<SelectField label="Ad" value={ad.id} onChange={setAdId} options={group.ads.map(a => ({value:a.id,label:a.name || 'Unnamed ad'}))}/></div>
+              <div className="button-row"><button type="button" className="button secondary" onClick={() => addAd()} disabled={group.ads.length >= 10}><Plus size={16}/>Add ad</button>
+                <button type="button" className="button text-button" onClick={() => addAd(true)} disabled={group.ads.length >= 10}>Duplicate ad</button>
+                <button type="button" className="button text-button danger" disabled={group.ads.length === 1} onClick={() => setDeletion({kind:'ad',id:ad.id})}>Remove ad</button></div>
+              <Field label="Ad name for class documentation" value={ad.name} onChange={v => adField('name',v)} maxLength={200}/>
+              <Field label="Final URL" type="url" value={ad.finalUrl} onChange={v => adField('finalUrl',v)} maxLength={2000} required placeholder="https://example.com/relevant-page" hint="Enter the complete destination. This workspace does not fetch the URL."/>
+              <div className="two-columns"><Field label="Display path 1" value={ad.displayPath1} onChange={v => adField('displayPath1',v)} maxLength={15} hint="Up to 15 counted characters."/>
+                <Field label="Display path 2" value={ad.displayPath2} onChange={v => adField('displayPath2',v)} maxLength={15} hint="Up to 15 counted characters."/></div>
+            </Section>
+            <Section title="Headline and description assets" help={help}><AssetEditor label="Headlines" assets={ad.headlines} onChange={v => adField('headlines',v)} limit={30} minimum={3} maximum={15}/>
+              <AssetEditor label="Descriptions" assets={ad.descriptions} onChange={v => adField('descriptions',v)} limit={90} minimum={2} maximum={4}/>
+              <button type="button" className="button text-button" onClick={() => setGuide('ads')}>Open copy-planning ideas</button>
+              {classRationale('creative','Explain the message, call to action, destination, and any pinned assets.')}
+            </Section>
+          </div><aside className="preview-column" aria-label="Ad preview"><div className="section-row"><h2>Ad preview</h2><HelpButton onClick={help} label="Learn about responsive ad previews"/></div>
+            <AdPreview key={ad.id} campaign={campaign} ad={ad}/></aside></div>}
 
-                            <div className="p-4 border border-gray-200 rounded hover:border-blue-500 transition-colors bg-white">
-                                <label className="flex gap-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded bg-white"
-                                        checked={data.networkDisplay}
-                                        onChange={(e) => updateField('networkDisplay', e.target.checked)}
-                                    />
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-800">Google Display Network</span>
-                                        </div>
-                                        <p className="text-sm text-gray-500 mt-1">Easy way to get additional conversions at similar or lower costs than Search.</p>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-                    </FormSection>
+          {step === 'assets' && <>
+            <Section title="Sitelinks" help={help} description="Add links you would configure at the campaign level. Descriptions are optional.">
+              {campaign.sitelinks.map((s,i) => <div className="asset-card" key={s.id}><div className="section-row"><h3>Sitelink {i+1}</h3><button type="button" className="icon-button" aria-label={'Remove sitelink ' + (i+1)} onClick={() => field('sitelinks',campaign.sitelinks.filter(item => item.id !== s.id))}><X size={18}/></button></div>
+                <div className="two-columns"><Field label={'Sitelink ' + (i+1) + ' text'} value={s.text} maxLength={25} onChange={v => field('sitelinks',campaign.sitelinks.map(item => item.id === s.id ? {...item,text:v} : item))} hint="25 counted characters maximum."/>
+                  <Field label={'Sitelink ' + (i+1) + ' final URL'} type="url" value={s.url} maxLength={2000} onChange={v => field('sitelinks',campaign.sitelinks.map(item => item.id === s.id ? {...item,url:v} : item))}/></div>
+                <div className="two-columns"><Field label={'Sitelink ' + (i+1) + ' description 1'} value={s.description1} maxLength={35} onChange={v => field('sitelinks',campaign.sitelinks.map(item => item.id === s.id ? {...item,description1:v} : item))}/>
+                  <Field label={'Sitelink ' + (i+1) + ' description 2'} value={s.description2} maxLength={35} onChange={v => field('sitelinks',campaign.sitelinks.map(item => item.id === s.id ? {...item,description2:v} : item))}/></div>
+              </div>)}
+              {campaign.sitelinks.length < 20 && <button type="button" className="button secondary" onClick={() => field('sitelinks',[...campaign.sitelinks,{id:makeId(),text:'',url:'',description1:'',description2:''}])}><Plus size={16}/>Add sitelink</button>}
+            </Section>
+            <Section title="Callouts" help={help}><p className="field-hint">Short, non-clickable details. 25 counted characters maximum each.</p>
+              {campaign.callouts.map((text,i) => <div className="inline-form" key={i}><Field label={'Callout ' + (i+1)} value={text} maxLength={25} onChange={v => field('callouts',campaign.callouts.map((s,j) => i === j ? v : s))}/>
+                <button type="button" className="icon-button" aria-label={'Remove callout ' + (i+1)} onClick={() => field('callouts',campaign.callouts.filter((_,j) => i !== j))}><X size={18}/></button></div>)}
+              {campaign.callouts.length < 20 && <button type="button" className="button secondary" onClick={() => field('callouts',[...campaign.callouts,''])}><Plus size={16}/>Add callout</button>}
+            </Section>
+            <Section title="URL options for documentation" help={help}><Check label="Add UTM parameters to the documented destination URL" checked={campaign.trackingEnabled} onChange={v => field('trackingEnabled',v)} hint="This does not configure Google Ads auto-tagging or install analytics."/>
+              {campaign.trackingEnabled && <><div className="three-columns"><Field label="utm_source" value={campaign.utmSource} onChange={v => field('utmSource',v)} maxLength={200}/><Field label="utm_medium" value={campaign.utmMedium} onChange={v => field('utmMedium',v)} maxLength={200}/><Field label="utm_campaign" value={campaign.utmCampaign} onChange={v => field('utmCampaign',v)} maxLength={200} hint="Uses the campaign name if empty."/></div>
+                <p className="field-hint">Selected ad URL: <span className="break-word">{landingUrl(ad,campaign) || 'Enter a final URL in Ads.'}</span></p></>}
+              <InfoBox title="Review the landing page yourself">Check that the destination delivers the offer, works on mobile, and provides a clear conversion action. Record your reasoning in the creative notes.</InfoBox>
+            </Section>
+          </>}
 
-                    <FormSection title="Locations">
-                        <div className="space-y-3">
-                            <p className="text-sm text-gray-600 mb-2">Select locations to target <InfoTooltip text="Targeting 'Presence or Interest' allows people outside the location to see ads if they search for your location."/></p>
-                            
-                            {[
-                                { id: 'all', label: 'All countries and territories' },
-                                { id: 'us_ca', label: 'United States and Canada' },
-                                { id: 'us', label: 'United States' },
-                                { id: 'custom', label: 'Enter another location' }
-                            ].map((opt) => (
-                                <label key={opt.id} className="flex items-center gap-3 cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="location" 
-                                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 bg-white"
-                                        checked={data.locationOption === opt.id}
-                                        onChange={() => updateField('locationOption', opt.id)}
-                                    />
-                                    <span className="text-sm text-gray-800">{opt.label}</span>
-                                </label>
-                            ))}
+          {step === 'budget' && <Section title="Average daily budget" help={help}>
+            <Field label="Average daily budget (USD)" type="number" min={0} value={campaign.budgetAmount} onChange={v => field('budgetAmount',v)} required placeholder="0.00" hint="Shared by all ad groups in this campaign."/>
+            {Number(campaign.budgetAmount) > 0 && <div className="budget-facts"><div><span>Possible daily spending limit</span><strong>{money(Number(campaign.budgetAmount)*2)}</strong></div>
+              <div><span>Monthly charging limit with a constant budget</span><strong>{money(Number(campaign.budgetAmount)*30.4)}</strong></div></div>}
+            <p className="field-hint">Standard average-daily-budget arithmetic. Budget changes and campaign duration affect spending limits. This is not a performance forecast.</p>
+            {classRationale('budget','Explain the budget and bidding assumptions for this business.')}
+          </Section>}
 
-                            {data.locationOption === 'custom' && (
-                                <div className="ml-7 mt-2">
-                                    <div className="flex relative max-w-md">
-                                        <Search size={16} className="absolute left-3 top-3 text-gray-400" />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Enter a location to target or exclude"
-                                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm bg-white text-gray-900"
-                                            onKeyDown={(e) => {
-                                                if(e.key === 'Enter') {
-                                                    const val = e.currentTarget.value.trim();
-                                                    if(val) {
-                                                        updateField('customLocations', [...data.customLocations, val]);
-                                                        e.currentTarget.value = '';
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        {data.customLocations.map((loc, i) => (
-                                            <span key={i} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                                                {loc} <button onClick={() => updateField('customLocations', data.customLocations.filter((_, idx) => idx !== i))} aria-label={`Remove ${loc}`} title={`Remove ${loc}`}><X size={12}/></button>
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </FormSection>
+          {step === 'review' && <>
+            <Section title="Publication status" help={help}><div className="publication-status"><span className={'status-pill ' + workspace.status}>{workspace.status === 'draft' ? 'Draft' : workspace.status === 'enabled' ? 'Enabled in workspace' : 'Paused in workspace'}</span>
+              <p>{workspace.launches.length ? 'Latest publication: ' + new Date(workspace.launches[workspace.launches.length-1].at).toLocaleString() : 'This campaign has not been published in the workspace.'}</p></div>
+              {changed && <InfoBox title="Changes since publication" tone="amber">Your working campaign differs from its last launch snapshot. Review and publish these changes when ready.</InfoBox>}
+              {workspace.status !== 'draft' && <button type="button" className="button secondary" onClick={() => setWorkspace(prev => recordActivity({...prev,status:prev.status === 'enabled' ? 'paused' : 'enabled'},prev.status === 'enabled' ? 'Paused practice campaign' : 'Resumed practice campaign','Changed the locally published campaign status.'))}>{workspace.status === 'enabled' ? 'Pause campaign' : 'Resume campaign'}</button>}
+            </Section>
+            <Section title="Technical requirements" help={help}>
+              {missing.length ? <><p>Resolve these items before publishing. You may still export a draft for class.</p><ul className="requirement-list">{missing.map((item,i) => <li key={i}><span>{item.message}</span><button type="button" className="button text-button" onClick={() => go(item.step,item.groupId,item.adId)}>Edit <ChevronRight size={14}/></button></li>)}</ul></> :
+                <InfoBox title="Required platform fields are complete"><p>Your configuration can be published in this workspace. Your instructor evaluates its strategy, creative, and effectiveness.</p></InfoBox>}
+              <div className="publish-actions"><button type="button" className="button primary" disabled={missing.length > 0} onClick={() => setDialog('publish')}>{workspace.launches.length ? 'Publish changes' : 'Publish practice campaign'}</button>
+                <button type="button" className="button secondary" onClick={() => go('submission')}>Prepare class submission</button></div>
+            </Section>
+            <Section title="Campaign configuration" help={help}><CampaignSummary campaign={campaign}/></Section>
+            <Section title="Ad groups and ads" help={help}><div className="campaign-table-wrap"><table className="campaign-table"><thead><tr><th>Ad group</th><th>Keywords</th><th>Ads</th><th>Actions</th></tr></thead><tbody>{campaign.adGroups.map(g =>
+              <tr key={g.id}><td>{g.name}</td><td>{g.keywords.length}</td><td>{g.ads.length}</td><td><button type="button" className="inline-link" onClick={() => go('groups',g.id)}>Keywords</button> · <button type="button" className="inline-link" onClick={() => go('ads',g.id,g.ads[0].id)}>Ads</button></td></tr>)}</tbody></table></div>
+              <p className="field-hint">The submission report includes every keyword, exclusion, asset, and ad.</p>
+            </Section>
+          </>}
 
-                    {/* NEW AUDIENCE SEGMENTS SECTION */}
-                    <FormSection title="Audience segments">
-                        <div className="space-y-4">
-                            <p className="text-sm text-gray-600">Select audience segments to add to your campaign. You can create new data segments in the Tools menu. <InfoTooltip text="Audiences allow you to target people based on who they are, their interests and habits, what they are actively researching, or how they've interacted with your business."/></p>
-                            
-                            {/* Audience Selection Widget */}
-                            <div className="border border-gray-300 rounded bg-white flex h-[500px]">
-                                {/* Left Side: Categories */}
-                                <div className="w-1/2 border-r border-gray-300 flex flex-col">
-                                    <div className="flex border-b border-gray-300">
-                                        <button 
-                                            className={`flex-1 py-3 text-sm font-medium text-center ${audienceTab === 'search' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}
-                                            onClick={() => setAudienceTab('search')}
-                                        >
-                                            Search
-                                        </button>
-                                        <button 
-                                            className={`flex-1 py-3 text-sm font-medium text-center ${audienceTab === 'browse' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}
-                                            onClick={() => setAudienceTab('browse')}
-                                        >
-                                            Browse
-                                        </button>
-                                    </div>
+          {step === 'submission' && <>
+            <Section title="Student and class information" help={help}><div className="two-columns"><Field label="Student name" value={campaign.studentName} onChange={v => field('studentName',v)} maxLength={200}/><Field label="Course and section" value={campaign.courseSection} onChange={v => field('courseSection',v)} maxLength={200}/></div>
+              <Field label="Business brief and offer" value={campaign.businessBrief} onChange={v => field('businessBrief',v)} multiline/>
+            </Section>
+            <Section title="Decision rationale for instructor review" help={help}>
+              {([['audience','Audience and targeting'],['keywords','Structure, keywords, and exclusions'],['creative','Creative, destination, and assets'],['budget','Bidding and budget']] as const).map(([key,label]) =>
+                <Field key={key} label={label} value={campaign.rationale[key]} onChange={v => field('rationale',{...campaign.rationale,[key]:v})} multiline/>)}
+            </Section>
+            <Section title="Submission exports" help={help}><SelectField label="Campaign version in the PDF report" value={reportId} onChange={setReportId}
+              options={[{value:'current',label:'Current working campaign'},...workspace.launches.map((s,i) => ({value:s.id,label:'Launch ' + (i+1) + ' · ' + new Date(s.at).toLocaleString()}))]}/>
+              <p className="field-hint">Launch reports use the captured configuration and notes. Student name and section use the current submission information.</p>
+              <div className="export-actions"><button type="button" className="button primary" onClick={() => window.print()}><Printer size={17}/>Print / Save PDF</button>
+                <button type="button" className="button secondary" onClick={exportProject}><Save size={17}/>Download project JSON</button>
+                <button type="button" className="button secondary" onClick={() => {downloadFile(keywordsCsv({...workspace,campaign:reportCampaign}),safeFileName(reportCampaign.campaignName) + '-keywords.csv','text/csv;charset=utf-8');setNotice('Keyword documentation CSV downloaded.');}}>Download keyword CSV</button></div>
+              <InfoBox title="For your instructor" tone="neutral">The PDF documents all campaign choices and your rationale. Project JSON also preserves launch snapshots for reopening. Neither export assigns a grade.</InfoBox>
+              {!campaign.studentName.trim() && <p className="field-hint">Student name is empty. Add it if your assignment requires identification.</p>}
+              {selectedSnapshot && <p className="field-hint">You selected a historical launch. To submit your latest notes and changes, choose Current working campaign.</p>}
+            </Section>
+            <Section title="Local activity log" help={help}>{workspace.activity.length ? <ol className="activity-list">{[...workspace.activity].reverse().map(a => <li key={a.id}><strong>{a.action}</strong><time>{new Date(a.at).toLocaleString()}</time><p>{a.detail}</p></li>)}</ol> : <p className="field-hint">Publication and meaningful workspace actions will appear here.</p>}
+              <p className="field-hint">Local records are editable and are not proof of authorship.</p>
+            </Section>
+          </>}
 
-                                    <div className="flex-1 overflow-y-auto bg-white">
-                                        {audienceTab === 'browse' ? (
-                                            <div>
-                                                {AUDIENCE_CATEGORIES.map((cat) => (
-                                                    <div key={cat.id} className="border-b border-gray-100 last:border-0">
-                                                        <button 
-                                                            className="w-full px-4 py-4 flex items-center justify-between hover:bg-gray-50 text-left"
-                                                            onClick={() => setOpenAudienceCategory(openAudienceCategory === cat.id ? null : cat.id)}
-                                                        >
-                                                            <div>
-                                                                <div className="text-sm font-medium text-gray-800">{cat.title}</div>
-                                                                <div className="text-xs text-gray-500">{cat.subtitle}</div>
-                                                            </div>
-                                                            <ChevronRight size={18} className={`text-gray-400 transition-transform ${openAudienceCategory === cat.id ? 'rotate-90' : ''}`} />
-                                                        </button>
-                                                        
-                                                        {openAudienceCategory === cat.id && (
-                                                            <div className="bg-gray-50 px-4 py-2 space-y-1">
-                                                                {cat.items.map((item) => (
-                                                                    <label key={item} className="flex items-start gap-3 py-2 cursor-pointer group">
-                                                                        <input 
-                                                                            type="checkbox" 
-                                                                            className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white"
-                                                                            checked={data.audienceSegments.includes(item)}
-                                                                            onChange={() => toggleAudienceSegment(item)}
-                                                                        />
-                                                                        <span className="text-sm text-gray-700 group-hover:text-gray-900">{item}</span>
-                                                                    </label>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="p-8 text-center text-gray-500 text-sm">
-                                                <div className="mx-auto w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                                                    <Search size={20} className="text-gray-400" />
-                                                </div>
-                                                Search functionality is simplified for educational mode.<br/>Please use the <strong>Browse</strong> tab to explore all available segments.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Right Side: Selection Summary */}
-                                <div className="w-1/2 flex flex-col bg-gray-50">
-                                    <div className="p-3 border-b border-gray-300 flex justify-between items-center bg-white h-[45px]">
-                                        <span className="text-xs font-medium text-gray-500 uppercase">{data.audienceSegments.length > 0 ? `${data.audienceSegments.length} Selected` : 'None selected'}</span>
-                                        {data.audienceSegments.length > 0 && (
-                                            <button 
-                                                onClick={() => updateField('audienceSegments', [])}
-                                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                                aria-label="Clear all selected segments"
-                                            >
-                                                Clear all
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                        {data.audienceSegments.length === 0 ? (
-                                            <div className="text-sm text-gray-500 mt-10 text-center">
-                                                Select one or more segments to observe.
-                                            </div>
-                                        ) : (
-                                            data.audienceSegments.map((seg) => (
-                                                <div key={seg} className="flex justify-between items-start bg-white p-2 rounded border border-gray-200 shadow-sm">
-                                                    <span className="text-sm text-gray-800">{seg}</span>
-                                                    <button onClick={() => toggleAudienceSegment(seg)} className="text-gray-400 hover:text-red-500 ml-2" aria-label={`Remove ${seg}`} title={`Remove ${seg}`}>
-                                                        <X size={14} />
-                                                    </button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Targeting Setting */}
-                            <div className="mt-6 pt-6 border-t border-gray-200">
-                                <label className="block text-sm font-medium text-gray-800 mb-2">
-                                    Targeting setting for this campaign <InfoTooltip text="Determines if you want to restrict ads only to these people (Targeting) or just gather data/bid differently for them (Observation)." />
-                                </label>
-                                <div className="space-y-3">
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <input 
-                                            type="radio" 
-                                            name="audienceTargeting"
-                                            className="mt-1 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 bg-white"
-                                            checked={data.audienceTargetingSetting === 'targeting'}
-                                            onChange={() => updateField('audienceTargetingSetting', 'targeting')}
-                                        />
-                                        <div>
-                                            <span className="text-sm text-gray-800 font-medium">Targeting</span>
-                                            <p className="text-xs text-gray-500">Narrow the reach of your campaign to the selected segments, with the option to adjust the bids.</p>
-                                        </div>
-                                    </label>
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <input 
-                                            type="radio" 
-                                            name="audienceTargeting"
-                                            className="mt-1 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 bg-white"
-                                            checked={data.audienceTargetingSetting === 'observation'}
-                                            onChange={() => updateField('audienceTargetingSetting', 'observation')}
-                                        />
-                                        <div>
-                                            <span className="text-sm text-gray-800 font-medium">Observation (Recommended)</span>
-                                            <p className="text-xs text-gray-500">Don't narrow the reach of your campaign, with the option to adjust the bids on the selected segments.</p>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-
-                        </div>
-                    </FormSection>
-                </StepContainer>
-            )}
-
-            {/* --- Step 3: Keywords --- */}
-            {activeStep === 'keywords' && (
-                <StepContainer title="Keywords and assets">
-                    <FormSection title="Keywords">
-                         <div className="grid grid-cols-1 gap-6">
-                            <p className="text-sm text-gray-600">
-                                Enter products or services to advertise. Google matches these keywords with terms people search for. 
-                                <InfoTooltip text="Use specific keywords for better targeting. Avoid single broad words like 'shoes'." />
-                            </p>
-                            
-                            <div className="relative">
-                                <label className="block text-xs font-medium text-gray-500 mb-1 uppercase">Enter keywords (one per line)</label>
-                                <textarea 
-                                    className="w-full h-64 p-4 border border-gray-300 rounded font-mono text-sm leading-6 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none bg-white text-gray-900"
-                                    placeholder={`tennis shoes\n"mens tennis shoes"\n[red tennis shoes sale]`}
-                                    value={data.rawKeywords}
-                                    onChange={(e) => handleKeywordChange(e.target.value)}
-                                />
-                                <div className="absolute bottom-4 right-4 bg-gray-50 px-2 py-1 border rounded text-xs text-gray-500">
-                                    {data.keywords.length} keywords
-                                </div>
-                            </div>
-                            
-                            <div className="bg-blue-50 p-4 rounded border border-blue-100 flex gap-3">
-                                <Info size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                                <div className="text-xs text-blue-800">
-                                    <strong>Match Types:</strong><br/>
-                                    keyword = Broad Match (Loose matching)<br/>
-                                    "keyword" = Phrase Match (Moderate matching)<br/>
-                                    [keyword] = Exact Match (Strict matching)
-                                </div>
-                            </div>
-                        </div>
-                    </FormSection>
-                </StepContainer>
-            )}
-
-            {/* --- Step 4: Ads (Complex Layout) --- */}
-            {activeStep === 'ads' && (
-                <div className="flex gap-6 max-w-[1600px] mx-auto items-start">
-                    {/* Form Column */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200">
-                        {/* Ad Strength Header */}
-                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0 z-10">
-                            <div>
-                                <h2 className="text-lg font-google text-gray-800">Create Ad</h2>
-                                <p className="text-xs text-gray-500">Responsive Search Ad</p>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div className="text-right">
-                                    <div className="text-xs text-gray-500 font-medium">Ad Strength</div>
-                                    <div className={`text-sm font-bold ${adStrength > 80 ? 'text-green-600' : adStrength > 40 ? 'text-yellow-600' : 'text-gray-400'}`}>
-                                        {adStrength > 80 ? 'Excellent' : adStrength > 40 ? 'Average' : 'Incomplete'}
-                                    </div>
-                                </div>
-                                <div className="w-10 h-10 rounded-full border-4 border-gray-200 relative flex items-center justify-center">
-                                     <svg className="absolute inset-0 transform -rotate-90" width="40" height="40">
-                                        <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="4" fill="transparent" className={`${adStrength > 80 ? 'text-green-500' : adStrength > 40 ? 'text-yellow-500' : 'text-transparent'}`} strokeDasharray={`${adStrength}, 100`} />
-                                     </svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-6 space-y-8">
-                            {/* Final URL */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Final URL <InfoTooltip text="The actual page the user lands on."/></label>
-                                <input 
-                                    type="url" 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm bg-white text-gray-900"
-                                    placeholder="https://www.example.com"
-                                    value={data.finalUrl}
-                                    onChange={(e) => updateField('finalUrl', e.target.value)}
-                                />
-                            </div>
-
-                            {/* Display Path */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Display path <InfoTooltip text="Part of the URL shown in the ad. Make it relevant to the keywords."/></label>
-                                <div className="flex items-center gap-2 text-sm text-gray-600">
-                                    <span className="text-gray-400">www.example.com /</span>
-                                    <input 
-                                        type="text" 
-                                        maxLength={15}
-                                        className="w-32 px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-sm bg-white text-gray-900"
-                                        placeholder=""
-                                        value={data.displayPath1}
-                                        onChange={(e) => updateField('displayPath1', e.target.value)}
-                                    />
-                                    <span>/</span>
-                                    <input 
-                                        type="text" 
-                                        maxLength={15}
-                                        className="w-32 px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-sm bg-white text-gray-900"
-                                        placeholder=""
-                                        value={data.displayPath2}
-                                        onChange={(e) => updateField('displayPath2', e.target.value)}
-                                    />
-                                </div>
-                                <p className="text-xs text-right text-gray-400 mt-1 max-w-sm">15 chars max each</p>
-                            </div>
-
-                            {/* Headlines */}
-                            <div>
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-sm font-bold text-gray-700">Headlines <span className="font-normal text-gray-500">(3-15 needed)</span></label>
-                                    <span className="text-xs text-blue-600 cursor-pointer hover:underline">View ideas</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {data.headlines.map((h, i) => (
-                                        <div key={i} className="flex gap-2">
-                                            <input 
-                                                readOnly 
-                                                value={h} 
-                                                className="flex-1 px-3 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 text-sm"
-                                            />
-                                            <button onClick={() => removeAsset('headlines', i)} className="text-gray-400 hover:text-red-500" aria-label="Remove headline" title="Remove headline"><X size={18} /></button>
-                                        </div>
-                                    ))}
-                                    {data.headlines.length < 15 && (
-                                        <div className="relative">
-                                            <input 
-                                                type="text" 
-                                                maxLength={30}
-                                                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm bg-white text-gray-900"
-                                                placeholder="Enter a headline"
-                                                onKeyDown={(e) => {
-                                                    if(e.key === 'Enter') {
-                                                        addAsset('headlines', e.currentTarget.value);
-                                                        e.currentTarget.value = '';
-                                                    }
-                                                }}
-                                                id="headline-input"
-                                            />
-                                            <button 
-                                                onClick={() => {
-                                                    const el = document.getElementById('headline-input') as HTMLInputElement;
-                                                    addAsset('headlines', el.value);
-                                                    el.value = '';
-                                                }}
-                                                className="absolute right-2 top-2 text-blue-600 hover:bg-blue-50 p-0.5 rounded"
-                                                aria-label="Add headline"
-                                                title="Add headline"
-                                            >
-                                                <Plus size={18}/>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Descriptions */}
-                            <div>
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-sm font-bold text-gray-700">Descriptions <span className="font-normal text-gray-500">(2-4 needed)</span></label>
-                                    <span className="text-xs text-blue-600 cursor-pointer hover:underline">View ideas</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {data.descriptions.map((h, i) => (
-                                        <div key={i} className="flex gap-2">
-                                            <input 
-                                                readOnly 
-                                                value={h} 
-                                                className="flex-1 px-3 py-2 border border-gray-300 rounded bg-gray-50 text-gray-900 text-sm"
-                                            />
-                                            <button onClick={() => removeAsset('descriptions', i)} className="text-gray-400 hover:text-red-500" aria-label="Remove description" title="Remove description"><X size={18} /></button>
-                                        </div>
-                                    ))}
-                                    {data.descriptions.length < 4 && (
-                                        <div className="relative">
-                                            <input 
-                                                type="text" 
-                                                maxLength={90}
-                                                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm bg-white text-gray-900"
-                                                placeholder="Enter a description"
-                                                onKeyDown={(e) => {
-                                                    if(e.key === 'Enter') {
-                                                        addAsset('descriptions', e.currentTarget.value);
-                                                        e.currentTarget.value = '';
-                                                    }
-                                                }}
-                                                id="desc-input"
-                                            />
-                                             <button 
-                                                onClick={() => {
-                                                    const el = document.getElementById('desc-input') as HTMLInputElement;
-                                                    addAsset('descriptions', el.value);
-                                                    el.value = '';
-                                                }}
-                                                className="absolute right-2 top-2 text-blue-600 hover:bg-blue-50 p-0.5 rounded"
-                                                aria-label="Add description"
-                                                title="Add description"
-                                            >
-                                                <Plus size={18}/>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-
-                    {/* Preview Column */}
-                    <div className="w-[400px] xl:w-[600px] flex-shrink-0 sticky top-24">
-                        <div className="mb-2 text-center text-xs text-gray-500 uppercase font-medium tracking-wide">Ad Preview</div>
-                        <AdPreview data={data} />
-                        <div className="mt-4 bg-yellow-50 p-4 rounded border border-yellow-100 text-xs text-yellow-800 flex gap-2">
-                            <AlertCircle size={16} className="flex-shrink-0"/>
-                            <p>For educational purposes only. This preview simulates the Google Search results page appearance.</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- Step 5: Budget --- */}
-            {activeStep === 'budget' && (
-                <StepContainer title="Budget">
-                    <FormSection title="Daily Budget">
-                         <div className="space-y-6 max-w-xl">
-                            <p className="text-sm text-gray-600">Enter the average amount you want to spend each day.</p>
-                            
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <span className="text-gray-500 font-bold">$</span>
-                                </div>
-                                <input 
-                                    type="number" 
-                                    className="block w-full pl-8 pr-12 py-4 border border-gray-300 rounded text-xl text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white"
-                                    placeholder="0.00"
-                                    value={data.budgetAmount}
-                                    onChange={(e) => updateField('budgetAmount', e.target.value)}
-                                />
-                            </div>
-
-                            <div className="bg-gray-50 p-4 rounded border border-gray-200">
-                                <h4 className="text-sm font-medium text-gray-800 mb-2">Monthly Estimate</h4>
-                                <div className="text-2xl font-google text-gray-700">
-                                    ${((parseFloat(data.budgetAmount) || 0) * 30.4).toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal">/ month max</span>
-                                </div>
-                            </div>
-                        </div>
-                    </FormSection>
-                </StepContainer>
-            )}
-
-             {/* --- Step 6: Review --- */}
-            {activeStep === 'review' && (
-                <StepContainer title="Review">
-                    <div className="p-6">
-                        <div className="bg-green-50 border border-green-100 p-4 rounded-lg mb-8 flex items-center gap-3">
-                            <CheckCircle size={24} className="text-green-600" />
-                            <div>
-                                <h3 className="text-sm font-medium text-green-900">Campaign Ready to Publish</h3>
-                                <p className="text-xs text-green-700">Review your settings below before submitting.</p>
-                            </div>
-                        </div>
-
-                        <div className="grid gap-6 mb-8">
-                            <div className="bg-white border border-gray-200 rounded p-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Campaign Name</label>
-                                <input 
-                                    type="text" 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-blue-500 outline-none bg-white text-gray-900"
-                                    placeholder="Enter campaign name (e.g. Summer Sale)"
-                                    value={data.campaignName}
-                                    onChange={(e) => updateField('campaignName', e.target.value)}
-                                />
-                            </div>
-
-                             <div className="bg-white border border-gray-200 rounded p-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Student Name (Required for submission)</label>
-                                <input 
-                                    type="text" 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-blue-500 outline-none bg-white text-gray-900"
-                                    placeholder="Enter your full name"
-                                    value={data.studentName}
-                                    onChange={(e) => updateField('studentName', e.target.value)}
-                                />
-                            </div>
-
-                            <div className="bg-white border border-gray-200 rounded p-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Strategy Explanation</label>
-                                <textarea 
-                                    className="w-full h-32 px-3 py-2 border border-gray-300 rounded focus:border-blue-500 outline-none bg-white text-gray-900"
-                                    placeholder="Explain why you chose this bidding strategy and these specific keywords..."
-                                    value={data.strategyDescription}
-                                    onChange={(e) => updateField('strategyDescription', e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end">
-                            <button 
-                                onClick={() => window.print()}
-                                className="bg-[#0b57d0] hover:bg-blue-700 text-white px-6 py-3 rounded font-medium shadow-sm transition-colors flex items-center gap-2"
-                            >
-                                <Printer size={18} /> Generate PDF Report
-                            </button>
-                        </div>
-                    </div>
-                </StepContainer>
-            )}
-
-            {/* Bottom Navigation for Steps */}
-            <div className="mt-8 flex justify-between items-center max-w-4xl mx-auto pt-6 border-t border-gray-200">
-                 <button 
-                    disabled={activeStep === 'bidding'}
-                    onClick={() => {
-                        const steps = ['bidding', 'settings', 'keywords', 'ads', 'budget', 'review'];
-                        const curr = steps.indexOf(activeStep);
-                        if(curr > 0) setActiveStep(steps[curr-1]);
-                    }}
-                    className="text-gray-600 font-medium px-6 py-2 rounded hover:bg-gray-100 disabled:opacity-50"
-                 >
-                     Back
-                 </button>
-                 <button 
-                    onClick={() => {
-                        const steps = ['bidding', 'settings', 'keywords', 'ads', 'budget', 'review'];
-                        const curr = steps.indexOf(activeStep);
-                        if(curr < steps.length - 1) setActiveStep(steps[curr+1]);
-                    }}
-                    className={`bg-[#0b57d0] text-white font-medium px-8 py-2.5 rounded hover:shadow-md transition-shadow ${activeStep === 'review' ? 'hidden' : ''}`}
-                 >
-                     Next
-                 </button>
-            </div>
-
-        </div>
-      </main>
-
-      <PrintView data={data} />
+          <footer className="step-footer"><button type="button" className="button secondary" disabled={currentIndex === 0} onClick={() => go(STEPS[currentIndex-1].id)}>Back</button>
+            <span>Step {currentIndex+1} of {STEPS.length}</span>{currentIndex < STEPS.length-1 && <button type="button" className="button primary" onClick={() => go(STEPS[currentIndex+1].id)}>Next <ChevronRight size={17}/></button>}</footer>
+        </main>
+      </div>
     </div>
-  );
+    <input type="file" className="hidden-file" ref={fileInput} accept=".json,application/json" onChange={importFile} aria-label="Import a Search Ads project"/>
+    <PrintView workspace={workspace} snapshot={selectedSnapshot}/>
+    {guide && <Modal title={GUIDES[guide].title} onClose={() => setGuide(null)} side><p className="guide-intro">{GUIDES[guide].intro}</p>
+      {GUIDES[guide].sections.map(section => <section className="guide-section" key={section.title}><h3>{section.title}</h3><p>{section.body}</p>{section.example && <div className="guide-example"><strong>Example</strong><p>{section.example}</p></div>}</section>)}
+      <p className="guide-footer">Learning context for platform practice. Your instructor supplies the feedback and grade.</p>
+    </Modal>}
+    {dialog === 'publish' && <Modal title="Publish this practice campaign?" onClose={() => setDialog(null)}>
+      <p>This captures the settings, ad groups, keywords, ads, assets, and notes you entered. It enables the campaign in this classroom workspace.</p>
+      <InfoBox title="No connection to an advertising account" tone="neutral">No ads are sent and no money is spent. Real platform review, billing, and delivery are separate. Your instructor evaluates the submitted campaign.</InfoBox>
+      <div className="button-row"><button type="button" className="button secondary" onClick={() => setDialog(null)}>Keep reviewing</button><button type="button" className="button primary" onClick={() => {
+        try { setWorkspace(publishWorkspace(workspace));setDialog(null);setNotice('Practice campaign published. The launch snapshot is saved for your submission.'); }
+        catch (e) {setDialog(null);setNotice((e as Error).message);}
+      }}>Confirm publication</button></div>
+    </Modal>}
+    {dialog === 'reset' && <Modal title="Start a new campaign?" onClose={() => setDialog(null)}>
+      <p>This replaces the active browser workspace. Download the current project first if you want to keep its campaign and snapshots.</p>
+      <div className="button-row"><button type="button" className="button secondary" onClick={exportProject}>Download current project</button><button type="button" className="button secondary" onClick={() => setDialog(null)}>Cancel</button>
+        <button type="button" className="button primary" onClick={() => {const fresh=createWorkspace();setWorkspace(fresh);setGroupId(fresh.campaign.adGroups[0].id);setAdId(fresh.campaign.adGroups[0].ads[0].id);setReportId('current');setSavePaused(false);setDialog(null);setNotice('New campaign started.');go('campaign');setVisited(new Set(['campaign']));}}>Start new campaign</button></div>
+    </Modal>}
+    {pendingImport && <Modal title="Open the imported project?" onClose={() => setPendingImport(null)}>
+      <p>Importing <strong>{pendingImport.campaign.campaignName || 'an unnamed campaign'}</strong> will replace the active workspace. Download your current project if you need to keep it.</p>
+      <div className="button-row"><button type="button" className="button secondary" onClick={exportProject}>Download current project</button><button type="button" className="button secondary" onClick={() => setPendingImport(null)}>Cancel</button>
+        <button type="button" className="button primary" onClick={() => {const next=recordActivity(pendingImport,'Imported project','Opened a local campaign file.');setWorkspace(next);setGroupId(next.campaign.adGroups[0].id);setAdId(next.campaign.adGroups[0].ads[0].id);setReportId('current');setSavePaused(false);setPendingImport(null);setNotice('Project imported. Review its campaign settings.');go('campaign');}}>Open project</button></div>
+    </Modal>}
+    {deletion && <Modal title={deletion.kind === 'group' ? 'Remove this ad group?' : 'Remove this ad?'} onClose={() => setDeletion(null)}>
+      <p>This removes the selection from your working campaign. Previously saved launch snapshots keep their original contents.</p>
+      <div className="button-row"><button type="button" className="button secondary" onClick={() => setDeletion(null)}>Cancel</button><button type="button" className="button primary" onClick={() => {
+        if (deletion.kind === 'group') {mutate(c => ({...c,adGroups:c.adGroups.filter(g => g.id !== deletion.id)}),'Removed ad group',group.name);setGroupId(campaign.adGroups.find(g => g.id !== deletion.id)!.id);}
+        else {mutate(c => ({...c,adGroups:c.adGroups.map(g => g.id === group.id ? {...g,ads:g.ads.filter(a => a.id !== deletion.id)} : g)}),'Removed ad',ad.name);setAdId(group.ads.find(a => a.id !== deletion.id)!.id);}
+        setDeletion(null);
+      }}>Remove</button></div>
+    </Modal>}
+  </>;
 }
