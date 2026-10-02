@@ -32,20 +32,21 @@ export function CampaignSummary({ campaign: c }: { campaign: CampaignData }) {
     {usesValue(c) && <p className="field-hint">Value-based bidding uses the conversion-value assumptions entered above.</p>}
   </div>;
 }
-export function PrintView({ workspace, snapshot }: { workspace: Workspace; snapshot?: LaunchSnapshot }) {
+export function PrintView({ workspace, snapshot, preview = false }: { workspace: Workspace; snapshot?: LaunchSnapshot; preview?: boolean }) {
   const c = snapshot?.campaign || workspace.campaign;
   const errors = requirements(c);
-  return <article className="print-only submission-report">
+  return <article className={'submission-report ' + (preview ? 'report-preview' : 'print-only')}>
     <header className="report-heading"><div><p className="eyebrow">MARK 4360 · Instructor review</p><h1>Search campaign submission</h1>
       <p>{snapshot ? 'Launch snapshot · ' + new Date(snapshot.at).toLocaleString() : 'Current working campaign'}</p></div>
       <div><strong>{workspace.campaign.studentName || 'Student name not provided'}</strong><p>{workspace.campaign.courseSection}</p></div></header>
     <p className="report-notice">Independent educational workspace. No advertising was purchased. Technical completion does not assess campaign effectiveness or assign a grade. The instructor evaluates this submission.</p>
+    <p className="field-hint">Workspace last updated: {new Date(workspace.updatedAt).toLocaleString()}. Report dates use the viewing device's local time. Campaign schedules use the account time zone listed below.</p>
     <h2>Campaign configuration</h2><CampaignSummary campaign={c}/>
     <h2>Business brief</h2><p className="preserve-lines">{value(c.businessBrief)}</p>
     {c.importNotes.length > 0 && <><h2>Imported draft notes</h2><ul>{c.importNotes.map((n,i) => <li key={i}>{n}</li>)}</ul></>}
     <h2>Campaign negative keywords</h2><p>{list(c.negativeKeywords.map(keywordSyntax))}</p>
     {c.adGroups.map((g,gi) => <section className="report-group" key={g.id}>
-      <h2>{gi+1}. {g.name || 'Unnamed ad group'}</h2><p><strong>Search-intent note:</strong> {value(g.intentNote)}</p>
+      <h2>{gi+1}. {g.name || 'Unnamed ad group'}</h2><p className="preserve-lines"><strong>Search-intent note:</strong> {value(g.intentNote)}</p>
       {c.biddingStrategy === 'manual_cpc' && <p><strong>Default CPC bid:</strong> {'$' + g.defaultCpc}</p>}
       <h3>Keywords</h3><table className="report-table"><thead><tr><th>Keyword text</th><th>Match type</th></tr></thead><tbody>
         {g.keywords.map(k => <tr key={k.id}><td>{keywordSyntax(k)}</td><td>{k.matchType}</td></tr>)}
@@ -60,16 +61,17 @@ export function PrintView({ workspace, snapshot }: { workspace: Workspace; snaps
         <div className="report-ad-preview"><AdPreview campaign={c} ad={ad} staticView/></div><p className="field-hint">Illustrative combination. All entered assets are listed above.</p>
       </section>)}
     </section>)}
-    <h2>Additional assets</h2>{c.sitelinks.map(s => <div className="report-sitelink" key={s.id}><strong>{value(s.text)}</strong><p className="break-word">{value(s.url)}</p>
+    <h2>Additional assets</h2>{!c.sitelinks.length && <p>No sitelinks entered.</p>}{c.sitelinks.map(s => <div className="report-sitelink" key={s.id}><strong>{value(s.text)}</strong><p className="break-word">{value(s.url)}</p>
       {(s.description1 || s.description2) && <p>{s.description1} / {s.description2}</p>}</div>)}
     <p><strong>Callouts:</strong> {list(c.callouts)}</p>
     <h2>Student rationale for instructor review</h2>{Object.entries(c.rationale).map(([key,text]) =>
       <div key={key}><h3>{{audience:'Audience and targeting',keywords:'Structure and keywords',creative:'Creative and destination',budget:'Bidding and budget'}[key]}</h3><p className="preserve-lines">{value(text)}</p></div>)}
-    <h2>Technical requirements at export</h2>{errors.length ? <ul>{errors.map((e,i) => <li key={i}>{e.message}</li>)}</ul> : <p>No missing technical fields detected. Strategic quality is for the instructor to evaluate.</p>}
-    <h2>Publication record</h2><p>Status in workspace: {workspace.status}. {workspace.launches.length} saved launch snapshots.</p>
+    <h2>Technical requirements for this campaign version</h2>{errors.length ? <ul>{errors.map((e,i) => <li key={i}>{e.message}</li>)}</ul> : <p>No missing technical fields detected. Strategic quality is for the instructor to evaluate.</p>}
+    <h2>Publication record</h2><p>Current practice status: {workspace.status}. {workspace.launches.length} saved launch snapshots. {snapshot && 'This report uses the selected launch configuration; the current practice status may have changed since that launch.'}</p>
     <ul>{workspace.launches.map((s,i) => <li key={s.id}>Publication {i+1}: {new Date(s.at).toLocaleString()} · {s.campaign.campaignName}</li>)}</ul>
     <h2>Local activity log</h2><table className="report-table"><thead><tr><th>Time</th><th>Action</th><th>Detail</th></tr></thead><tbody>
       {workspace.activity.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString()}</td><td>{a.action}</td><td>{a.detail}</td></tr>)}
+      {!workspace.activity.length && <tr><td colSpan={3}>No local activity recorded.</td></tr>}
     </tbody></table><p className="field-hint">Local records are editable and do not prove authorship. The project JSON contains the saved launch configurations.</p>
   </article>;
 }
