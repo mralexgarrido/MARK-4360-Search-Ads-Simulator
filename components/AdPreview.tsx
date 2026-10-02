@@ -19,8 +19,8 @@ export function AdPreview({ campaign, ad, staticView = false }: { campaign: Camp
       <div className="search-ad-content"><div className="sponsored">Sponsored</div>
         <div className="search-domain"><span className="globe-circle"><Globe size={18}/></span><div><strong>{domain}</strong>
           <div>{[domain,ad.displayPath1,ad.displayPath2].filter(Boolean).join(' › ')}</div></div></div>
-        <div className="search-headline">{headlines.length ? headlines.join(' | ') : 'Your headlines appear here'}</div>
-        <div className="search-description">{descriptions.length ? descriptions.join(' ') : 'Your descriptions appear here.'}</div>
+        <div className="search-headline">{headlines.length ? headlines.map((text,i) => text || '[Headline ' + (i+1) + ' unavailable]').join(' | ') : 'Your headlines appear here'}</div>
+        <div className="search-description">{descriptions.length ? descriptions.map((text,i) => text || '[Description ' + (i+1) + ' unavailable]').join(' ') : 'Your descriptions appear here.'}</div>
         {campaign.callouts.filter(Boolean).length > 0 && <div className="search-callouts">{campaign.callouts.filter(Boolean).join(' · ')}</div>}
         {campaign.sitelinks.filter(s => s.text.trim()).length > 0 && <div className="search-sitelinks">{campaign.sitelinks.filter(s => s.text.trim()).slice(0,4).map(s =>
           <div key={s.id}><span>{s.text}</span>{s.description1 && <small>{s.description1}<br/>{s.description2}</small>}</div>)}</div>}

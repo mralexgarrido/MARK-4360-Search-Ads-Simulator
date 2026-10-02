@@ -4,14 +4,19 @@ import { parseKeywords } from './campaign.ts';
 
 export const STORAGE_KEY = 'mark4360_search_ads_workspace_v2';
 export const LEGACY_KEY = 'mark4360_draft';
-export const MAX_FILE_BYTES = 32 * 1024 * 1024;
+export const MAX_FILE_MEGABYTES = 128;
+export const MAX_FILE_BYTES = MAX_FILE_MEGABYTES * 1024 * 1024;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-const string = (value: unknown, limit = 10000) => typeof value === 'string' && value.length <= limit;
+// Editable fields allow 10,000 characters. Copy names and activity descriptions
+// may add text, so the persisted shape must accept every value those controls make.
+const string = (value: unknown, limit = 20000) => typeof value === 'string' && value.length <= limit;
 const strings = (value: unknown, max = 200): value is string[] => Array.isArray(value) && value.length <= max && value.every(v => string(v, 500));
 const oneOf = (value: unknown, values: unknown[]) => values.includes(value);
-const idsUnique = (items: { id: string }[]) => new Set(items.map(i => i.id)).size === items.length;
+const identifier = (value: unknown) => string(value,100) && (value as string).trim().length > 0;
+const timestamp = (value: unknown) => string(value,100) && Number.isFinite(new Date(value as string).getTime());
+const idsUnique = (items: unknown[]) => items.every(i => object(i) && identifier(i.id)) && new Set(items.map(i => (i as {id:string}).id)).size === items.length;
 const keywordArray = (value: unknown) => Array.isArray(value) && value.length <= 200 && value.every(k =>
-  object(k) && string(k.id, 100) && string(k.text, 500) && oneOf(k.matchType, ['broad', 'phrase', 'exact'])) && idsUnique(value);
+  object(k) && identifier(k.id) && string(k.text) && oneOf(k.matchType, ['broad', 'phrase', 'exact'])) && idsUnique(value);
 const textAssets = (value: unknown, max: number, pins: string[]) => Array.isArray(value) && value.length <= max &&
   value.every(a => object(a) && string(a.text, 500) && oneOf(a.pin, pins));
 function campaignShape(value: unknown): value is CampaignData {
@@ -20,7 +25,7 @@ function campaignShape(value: unknown): value is CampaignData {
   const fields = ['id','campaignName','businessName','businessBrief','studentName','courseSection','targetCpa','targetRoas',
     'cpcLimit','impressionShare','conversionAction','conversionValue','measurementPlan','startDate','endDate','timeZone','budgetAmount',
     'utmSource','utmMedium','utmCampaign'];
-  if (!fields.every(key => string(c[key]))) return false;
+  if (!fields.every(key => string(c[key])) || !identifier(c.id)) return false;
   if (!oneOf(c.objective, ['leads','sales','traffic','no_guidance']) ||
       !oneOf(c.biddingStrategy, ['maximize_clicks','manual_cpc','maximize_conversions','target_cpa','maximize_conversion_value','target_roas','target_impression_share']) ||
       !oneOf(c.conversionValueMode, ['fixed','dynamic']) || !oneOf(c.impressionPlacement, ['anywhere','top','absolute_top']) ||
@@ -30,31 +35,31 @@ function campaignShape(value: unknown): value is CampaignData {
   if (!['locations','excludedLocations','languages','audienceSegments','callouts','importNotes'].every(k => strings(c[k]))) return false;
   if (!keywordArray(c.negativeKeywords)) return false;
   if (!object(c.rationale) || !['audience','keywords','creative','budget'].every(k => string((c.rationale as Record<string,unknown>)[k]))) return false;
-  if (!Array.isArray(c.schedules) || c.schedules.length > 30 || !c.schedules.every(s => object(s) && string(s.id,100) &&
+  if (!Array.isArray(c.schedules) || c.schedules.length > 42 || !c.schedules.every(s => object(s) && identifier(s.id) &&
       strings(s.days,7) && s.days.every(d => oneOf(d,['Mon','Tue','Wed','Thu','Fri','Sat','Sun'])) && string(s.start,5) && string(s.end,5)) || !idsUnique(c.schedules)) return false;
   if (!Array.isArray(c.sitelinks) || c.sitelinks.length > 20 || !c.sitelinks.every(s => object(s) &&
-      ['id','text','url','description1','description2'].every(k => string(s[k],2000))) || !idsUnique(c.sitelinks)) return false;
+      ['text','url','description1','description2'].every(k => string(s[k])) && identifier(s.id)) || !idsUnique(c.sitelinks)) return false;
   if (!Array.isArray(c.adGroups) || c.adGroups.length < 1 || c.adGroups.length > 20 || !idsUnique(c.adGroups)) return false;
   return c.adGroups.every(g => object(g) && ['id','name','intentNote','defaultCpc'].every(k => string(g[k])) &&
     keywordArray(g.keywords) && keywordArray(g.negativeKeywords) &&
     Array.isArray(g.ads) && g.ads.length > 0 && g.ads.length <= 10 && idsUnique(g.ads) && g.ads.every(a =>
-      object(a) && ['id','name','finalUrl','displayPath1','displayPath2'].every(k => string(a[k],2000)) &&
+      object(a) && ['name','finalUrl','displayPath1','displayPath2'].every(k => string(a[k])) && identifier(a.id) &&
       textAssets(a.headlines,15,['','1','2','3']) && textAssets(a.descriptions,4,['','1','2'])));
 }
 export function validateWorkspace(input: unknown): Workspace {
   if (!object(input) || input.schemaVersion !== 2 || !campaignShape(input.campaign) ||
-      !oneOf(input.status,['draft','enabled','paused']) || !string(input.updatedAt,100) ||
+      !oneOf(input.status,['draft','enabled','paused']) || !timestamp(input.updatedAt) ||
       !Array.isArray(input.activity) || input.activity.length > 100 ||
-      !input.activity.every(a => object(a) && ['id','at','action','detail'].every(k => string(a[k]))) || !idsUnique(input.activity) ||
+      !input.activity.every(a => object(a) && identifier(a.id) && timestamp(a.at) && ['action','detail'].every(k => string(a[k],40000))) || !idsUnique(input.activity) ||
       !Array.isArray(input.launches) || input.launches.length > 10 ||
-      !input.launches.every(s => object(s) && string(s.id,100) && string(s.at,100) && campaignShape(s.campaign)) || !idsUnique(input.launches) ||
+      !input.launches.every(s => object(s) && identifier(s.id) && timestamp(s.at) && campaignShape(s.campaign)) || !idsUnique(input.launches) ||
       (input.status !== 'draft' && input.launches.length === 0)) {
     throw new Error('This file does not contain a supported Search Ads workspace. Export a project JSON from this simulator.');
   }
   return JSON.parse(JSON.stringify(input)) as Workspace;
 }
 export function decodeProject(text: string): Workspace {
-  if (new TextEncoder().encode(text).length > MAX_FILE_BYTES) throw new Error('Choose a project JSON smaller than 32 MB.');
+  if (new TextEncoder().encode(text).length > MAX_FILE_BYTES) throw new Error('Choose a project JSON no larger than ' + MAX_FILE_MEGABYTES + ' MB.');
   let input: unknown;
   try { input = JSON.parse(text); } catch { throw new Error('This is not valid JSON. Choose an exported project file.'); }
   if (object(input) && input.format === 'mark4360-search-ads') {
@@ -67,7 +72,9 @@ export function decodeProject(text: string): Workspace {
 export function migrateLegacy(input: unknown): Workspace {
   if (!object(input) || !strings(input.headlines,15) || !strings(input.descriptions,4) ||
       !string(input.biddingFocus) || !oneOf(input.biddingFocus,['conversions','conversion_value','clicks','impression_share']) ||
-      !string(input.rawKeywords) || !string(input.budgetAmount)) throw new Error('The file is not a supported campaign draft.');
+      !string(input.rawKeywords,MAX_FILE_BYTES) || !string(input.budgetAmount)) throw new Error('The file is not a supported campaign draft.');
+  const legacyLines = (input.rawKeywords as string).split(/\r?\n/).map(text => text.trim()).filter(Boolean);
+  if (legacyLines.length > 200) throw new Error('This earlier draft has more than 200 keywords. Its original copy was kept. Split it into lists of at most 200 before importing; no keywords were discarded.');
   const workspace = createWorkspace();
   const c = workspace.campaign;
   const copy = (from: string, to: keyof CampaignData) => { if (string(input[from])) (c as unknown as Record<string, unknown>)[to] = input[from]; };
@@ -85,12 +92,18 @@ export function migrateLegacy(input: unknown): Workspace {
   if (strings(input.audienceSegments)) c.audienceSegments = input.audienceSegments;
   if (oneOf(input.audienceTargetingSetting,['observation','targeting'])) c.audienceMode = input.audienceTargetingSetting as CampaignData['audienceMode'];
   const group = newGroup('Imported ad group');
-  try { group.keywords = parseKeywords(input.rawKeywords as string); }
-  catch {
-    const lines = (input.rawKeywords as string).split(/\r?\n/).filter(Boolean).slice(0,200);
-    group.keywords = lines.map(text => ({ id: makeId(), text, matchType: 'broad' as const }));
-    c.importNotes.push('Some keyword syntax needs review. The original keyword text was preserved.');
-  }
+  let keywordReview = false;
+  group.keywords = legacyLines.map(text => {
+    try { return parseKeywords(text)[0]; }
+    catch {
+      keywordReview = true;
+      // Retain valid match delimiters even when the original text exceeds limits.
+      const exact = text.startsWith('[') && text.endsWith(']');
+      const phrase = /^["“]/.test(text) && /["”]$/.test(text);
+      return {id:makeId(),text:exact || phrase ? text.slice(1,-1) : text,matchType:exact ? 'exact' as const : phrase ? 'phrase' as const : 'broad' as const};
+    }
+  });
+  if (keywordReview) c.importNotes.push('Some earlier keyword text or syntax needs review. Every keyword was preserved, with valid match-type delimiters retained.');
   const ad = newAd('Imported responsive search ad');
   ['finalUrl','displayPath1','displayPath2'].forEach(k => { if (string(input[k])) (ad as unknown as Record<string,unknown>)[k] = input[k]; });
   ad.headlines = (input.headlines as string[]).map(text => ({ text, pin: '' }));

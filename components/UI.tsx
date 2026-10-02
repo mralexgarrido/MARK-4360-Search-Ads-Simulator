@@ -6,6 +6,12 @@ import { adCharacters, parseKeywords } from '../lib/campaign';
 export function HelpButton({ onClick, label = 'Open guidance' }: { onClick: () => void; label?: string }) {
   return <button type="button" className="icon-button help-button" onClick={onClick} aria-label={label} title={label}><HelpCircle size={18}/></button>;
 }
+function usePendingEntry(pending: boolean, onPendingChange?: (hasPending: boolean) => void) {
+  const callback = useRef(onPendingChange);
+  callback.current = onPendingChange;
+  useEffect(() => { callback.current?.(pending); }, [pending]);
+  useEffect(() => () => { callback.current?.(false); }, []);
+}
 export function Section({ title, children, help, description }: { title: string; children: React.ReactNode; help?: () => void; description?: string }) {
   const id = useId();
   return <section className="panel" aria-labelledby={id}>
@@ -14,16 +20,16 @@ export function Section({ title, children, help, description }: { title: string;
     <div className="panel-body">{children}</div>
   </section>;
 }
-export function Field({ label, value, onChange, hint, type = 'text', multiline, maxLength, required, placeholder, min, max }: {
+export function Field({ label, value, onChange, hint, type = 'text', multiline, maxLength, required, placeholder, min, max, step }: {
   label: string; value: string; onChange: (value: string) => void; hint?: string; type?: string;
-  multiline?: boolean; maxLength?: number; required?: boolean; placeholder?: string; min?: number; max?: number;
+  multiline?: boolean; maxLength?: number; required?: boolean; placeholder?: string; min?: number; max?: number; step?: number;
 }) {
   const id = useId(), hintId = id + '-hint';
   const common = { id, value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value),
-    'aria-describedby': hint ? hintId : undefined, maxLength: maxLength ?? 10000, placeholder };
+    'aria-describedby': hint ? hintId : undefined, 'aria-required': required || undefined, maxLength: maxLength ?? 10000, placeholder };
   return <div className="field">
     <label htmlFor={id}>{label}{required && <span className="required-label">Required</span>}</label>
-    {multiline ? <textarea {...common} rows={4}/> : <input {...common} type={type} min={min} max={max} step={type === 'number' ? 'any' : undefined}/>}
+    {multiline ? <textarea {...common} rows={4}/> : <input {...common} type={type} min={min} max={max} step={step ?? (type === 'number' ? 'any' : undefined)}/>}
     {hint && <p id={hintId} className="field-hint">{hint}</p>}
   </div>;
 }
@@ -59,27 +65,35 @@ export function Modal({ title, children, onClose, side = false }: { title: strin
     <div className="modal-body">{children}</div>
   </dialog>;
 }
-export function StringList({ label, items, onChange, placeholder, limit = 50 }: { label: string; items: string[]; onChange: (items: string[]) => void; placeholder?: string; limit?: number }) {
+export function StringList({ label, items, onChange, placeholder, limit = 50, onPendingChange }: { label: string; items: string[]; onChange: (items: string[]) => void; placeholder?: string; limit?: number; onPendingChange?: (hasPending: boolean) => void }) {
   const [text, setText] = useState(''), [error, setError] = useState('');
   const id = useId();
+  const pending = !!text.trim();
+  usePendingEntry(pending, onPendingChange);
   const add = (e: React.FormEvent) => {
     e.preventDefault();
-    const incoming = text.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+    if (!pending) return;
+    const incoming = text.split(/[;\n]/).map(s => s.trim()).filter(Boolean);
     const unique = [...items];
     incoming.forEach(item => { if (!unique.some(s => s.toLowerCase() === item.toLowerCase())) unique.push(item); });
     if (unique.length > limit) { setError('Use up to ' + limit + ' entries in this list.'); return; }
     onChange(unique); setText(''); setError('');
   };
   return <div className="field"><label htmlFor={id}>{label}</label>
-    <form className="inline-form" onSubmit={add}><input id={id} value={text} onChange={e => setText(e.target.value)} maxLength={500} placeholder={placeholder}/><button type="submit" className="button secondary"><Plus size={16}/>Add</button></form>
+    <form className="inline-form" onSubmit={add}><input id={id} value={text} onChange={e => {setText(e.target.value);setError('');}} maxLength={500} placeholder={placeholder} data-pending-input={pending ? 'true' : undefined} aria-describedby={id + '-hint' + (pending ? ' ' + id + '-pending' : '')}/><button type="submit" className="button secondary" disabled={!pending}><Plus size={16}/>Add</button></form>
+    <p className="field-hint" id={id + '-hint'}>Separate multiple entries with semicolons. Commas stay within an entry.</p>
+    {pending && <p className="field-hint" id={id + '-pending'}>Not added yet. Use Add to include these entries in your campaign and exports.</p>}
     {error && <p className="error-text" role="alert">{error}</p>}
     <div className="chips">{items.map((item,i) => <span className="chip" key={item + i}>{item}<button type="button" aria-label={'Remove ' + item} onClick={() => onChange(items.filter((_,j) => i !== j))}><X size={14}/></button></span>)}</div>
   </div>;
 }
-export function KeywordEditor({ label, keywords, onChange, negative = false }: { label: string; keywords: Keyword[]; onChange: (keywords: Keyword[]) => void; negative?: boolean }) {
+export function KeywordEditor({ label, keywords, onChange, negative = false, onPendingChange }: { label: string; keywords: Keyword[]; onChange: (keywords: Keyword[]) => void; negative?: boolean; onPendingChange?: (hasPending: boolean) => void }) {
   const [bulk, setBulk] = useState(''), [message, setMessage] = useState(''), [error, setError] = useState('');
   const id = useId();
+  const pending = !!bulk.trim();
+  usePendingEntry(pending, onPendingChange);
   const add = () => {
+    if (!pending) return;
     try {
       const incoming = parseKeywords(bulk);
       const unique = [...keywords];
@@ -89,10 +103,11 @@ export function KeywordEditor({ label, keywords, onChange, negative = false }: {
     } catch (e) { setError((e as Error).message); }
   };
   return <div className="keyword-editor">
-    <div className="field"><label htmlFor={id}>{label}</label><textarea id={id} rows={4} value={bulk} onChange={e => setBulk(e.target.value)} maxLength={20000}
-      placeholder={'One per line: tutoring\n"SAT tutoring"\n[SAT tutor McAllen]'} aria-describedby={id + '-hint'}/>
+    <div className="field"><label htmlFor={id}>{label}</label><textarea id={id} rows={4} value={bulk} onChange={e => {setBulk(e.target.value);setMessage('');setError('');}} maxLength={20000} data-pending-input={pending ? 'true' : undefined}
+      placeholder={'One per line: tutoring\n"SAT tutoring"\n[SAT tutor McAllen]'} aria-describedby={id + '-hint' + (pending ? ' ' + id + '-pending' : '')}/>
       <p className="field-hint" id={id + '-hint'}>Plain text = broad. Quotation marks = phrase. Brackets = exact.{negative && ' Negative match types have their own exclusion rules; open the guide for examples.'}</p>
-    </div><button className="button secondary" type="button" onClick={add}><Plus size={16}/>Add keywords</button>
+      {pending && <p className="field-hint" id={id + '-pending'}>Not added yet. Use Add keywords to include these entries in your campaign and exports.</p>}
+    </div><button className="button secondary" type="button" onClick={add} disabled={!pending}><Plus size={16}/>Add keywords</button>
     {error && <p role="alert" className="error-text">{error}</p>}{message && <p role="status" className="field-hint">{message}</p>}
     {keywords.length > 0 && <div className="keyword-rows" aria-label={label + ' list'}>
       <div className="keyword-row column-labels"><span>Keyword text</span><span>Match type</span><span/></div>

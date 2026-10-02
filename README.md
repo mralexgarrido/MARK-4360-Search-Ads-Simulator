@@ -6,7 +6,7 @@ A guided Google Search Ads practice workspace for MARK 4360. Students learn the 
 
 [Current public simulator](https://mralexgarrido.github.io/MARK-4360-Search-Ads-Simulator/) · [Maintainer guide](MAINTAINING.md) · [Revamp review notes](REVAMP_REVIEW.md) · [Report an issue](https://github.com/mralexgarrido/MARK-4360-Search-Ads-Simulator/issues)
 
-The public link may still show the earlier version while this revamp is under review.
+The guided workspace is live at the public link above.
 
 ## Student workflow
 
@@ -31,6 +31,7 @@ This is an independent educational simulation. It reproduces selected Search cam
 - **Autosave** stores the current workspace in this browser and site after a short delay. **Save now** also saves immediately.
 - **Project JSON** preserves the working campaign, notes, recent activity, and launch snapshots. Download a copy and import it to continue on another device.
 - **Print / Save PDF** uses the browser's native print dialog. The report lists every group, keyword, exclusion, ad asset and pin, campaign setting, destination, measurement plan, and written rationale.
+- **Preview assignment report** displays the full report before export. **Download assignment report** saves a self-contained HTML file that opens offline and provides its own Print / Save PDF button. This is a readable backup when browser PDF controls differ.
 - **Keyword CSV** documents positive and negative keywords and their scope. It is not a Google Ads upload template.
 - **Launch snapshots** capture publication settings and notes. Choose the current working campaign or a historical launch for the report. Student name and course section use the current submission information.
 
@@ -38,7 +39,11 @@ Publication captures a snapshot and enables the practice campaign here. Later ed
 
 Storage belongs to the browser origin, has browser quota limits, and does not sync through a student account. Clearing site data removes saved work. If browser saving fails, the app gives a notice and keeps downloads available. A malformed current saved entry is preserved and autosave pauses until the student explicitly imports or starts a new project.
 
-Earlier drafts under the original storage key are migrated when possible, keeping the original entry. Match types, assets, student information, targeting, and explanatory text are retained. Migration notes call attention to settings that need review. JSON imports are checked before replacement, are limited to 32 MB, and require confirmation to open.
+Earlier drafts under the original storage key are migrated when possible, keeping the original entry. Match types, assets, student information, targeting, and explanatory text are retained. Migration notes call attention to settings that need review. JSON imports are checked before replacement, are limited to 128 MB, and require confirmation to open. Oversized earlier keyword lists are rejected with instructions rather than silently shortened.
+
+Use the Add button to commit pasted keywords, locations, and additional languages. The workspace warns before leaving a step, saving, or exporting if entries are still waiting to be added. Separate locations with semicolons or newlines; a comma remains part of a location such as McAllen, TX. Class-only notes and student information do not require republishing the ad campaign.
+
+Downloads do not submit an assignment. Open and check the saved report, then upload the requested files to the course assignment. Select Current working campaign to include the latest rationale; a historical launch keeps the configuration and notes captured at publication. The selected version also applies to the keyword CSV, while project JSON always preserves the entire workspace.
 
 ### For the instructor
 
@@ -55,7 +60,7 @@ npm ci
 npm run dev
 ~~~
 
-For this review branch, check out feat/google-ads-guided-workspace before running the commands. Open the Vite address at /MARK-4360-Search-Ads-Simulator/.
+Open the Vite address at /MARK-4360-Search-Ads-Simulator/.
 
 ~~~sh
 npm test
