@@ -7,6 +7,15 @@ export const BID_LABELS: Record<CampaignData['biddingStrategy'], string> = {
   target_roas: 'Target ROAS', target_impression_share: 'Target impression share'
 };
 export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export function mergeLanguageSelections(selected: string[], additional: string[]): string[] {
+  const result: string[] = [];
+  for (const entry of [...selected, ...additional]) {
+    const value = entry.trim();
+    const language = ['English', 'Spanish'].find(name => name.toLowerCase() === value.toLowerCase()) || value;
+    if (language && !result.some(name => name.toLowerCase() === language.toLowerCase())) result.push(language);
+  }
+  return result;
+}
 export const usesConversions = (c: CampaignData) => ['maximize_conversions', 'target_cpa', 'maximize_conversion_value', 'target_roas'].includes(c.biddingStrategy);
 export const usesValue = (c: CampaignData) => ['maximize_conversion_value', 'target_roas'].includes(c.biddingStrategy);
 export const isWebUrl = (value: string) => {

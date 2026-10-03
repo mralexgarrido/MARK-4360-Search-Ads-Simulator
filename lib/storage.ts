@@ -124,4 +124,15 @@ export function loadWorkspace(storage: Pick<Storage,'getItem'>): { workspace: Wo
   return { workspace: createWorkspace(), note: '' };
 }
 export const saveWorkspace = (storage: Pick<Storage,'setItem'>, workspace: Workspace) => storage.setItem(STORAGE_KEY, JSON.stringify(workspace));
+export class StorageConflictError extends Error {
+  constructor() { super('Another simulator tab changed the saved workspace.'); this.name = 'StorageConflictError'; }
+}
+/** Compare immediately before writing, so a delayed autosave cannot replace another tab's work. */
+export function saveWorkspaceIfCurrent(storage: Pick<Storage,'getItem'|'setItem'>, workspace: Workspace, expected: string | null): string {
+  const encoded = JSON.stringify(workspace);
+  const current = storage.getItem(STORAGE_KEY);
+  if (current !== expected && current !== encoded) throw new StorageConflictError();
+  storage.setItem(STORAGE_KEY, encoded);
+  return encoded;
+}
 export const projectJson = (workspace: Workspace) => JSON.stringify({ format: 'mark4360-search-ads', schemaVersion: 2, exportedAt: new Date().toISOString(), workspace }, null, 2);

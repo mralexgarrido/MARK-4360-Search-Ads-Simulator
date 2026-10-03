@@ -60,7 +60,7 @@ export const REPORT_STYLES = `
  .submission-report .report-heading h1{font-size:22pt}.submission-report h2{font-size:13pt}.submission-report h3{font-size:11pt}.submission-report h4{font-size:10pt}
  .submission-report h2,.submission-report h3,.submission-report h4{break-after:avoid}
  .submission-report p{orphans:3;widows:3}.submission-report .report-heading,.submission-report .report-ad-preview,.submission-report .report-sitelink{break-inside:avoid}
- .submission-report .report-asset-columns{display:block}.submission-report .facts{font-size:9pt}.submission-report .facts>div{display:block;padding:6px 0;break-inside:auto}.submission-report .facts dt{font-weight:bold}.submission-report .facts dd{margin-top:2px}
+ .submission-report .report-asset-columns{display:block}.submission-report .facts{font-size:9pt}.submission-report .facts>div{display:block;padding:6px 0;break-inside:auto}.submission-report .facts dt{font-weight:bold;break-after:avoid}.submission-report .facts dd{margin-top:2px;orphans:3;widows:3}
  .submission-report .report-table{font-size:9pt}.submission-report .report-table tr{break-inside:auto}.submission-report .field-hint{font-size:8pt}
 }
 `;

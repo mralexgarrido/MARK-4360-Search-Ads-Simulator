@@ -39,6 +39,8 @@ Publication captures a snapshot and enables the practice campaign here. Later ed
 
 Storage belongs to the browser origin, has browser quota limits, and does not sync through a student account. Clearing site data removes saved work. If browser saving fails, the app gives a notice and keeps downloads available. A malformed current saved entry is preserved and autosave pauses until the student explicitly imports or starts a new project.
 
+If another simulator tab changes the saved project, saving pauses in this tab to preserve its current copy. Download this tab's project JSON before reloading. An explicit import or new-campaign confirmation resumes saving. Closing or reloading also attempts an immediate save and requests the browser's leave-page warning if accepted edits remain unsaved; browsers may suppress that warning, so use JSON backups when storage is unavailable.
+
 Earlier drafts under the original storage key are migrated when possible, keeping the original entry. Match types, assets, student information, targeting, and explanatory text are retained. Migration notes call attention to settings that need review. JSON imports are checked before replacement, are limited to 128 MB, and require confirmation to open. Oversized earlier keyword lists are rejected with instructions rather than silently shortened.
 
 Use the Add button to commit pasted keywords, locations, and additional languages. The workspace warns before leaving a step, saving, or exporting if entries are still waiting to be added. Separate locations with semicolons or newlines; a comma remains part of a location such as McAllen, TX. Class-only notes and student information do not require republishing the ad campaign.
