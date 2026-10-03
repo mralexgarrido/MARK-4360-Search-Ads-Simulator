@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorkspace, newGroup } from '../types.ts';
-import { adCharacters, assetPositionsAvailable, hasUnpublishedChanges, isWebUrl, landingUrl, parseKeywords, previewAssets, publishWorkspace, recordActivity, requirements } from '../lib/campaign.ts';
+import { adCharacters, assetPositionsAvailable, hasUnpublishedChanges, isWebUrl, landingUrl, mergeLanguageSelections, parseKeywords, previewAssets, publishWorkspace, recordActivity, requirements } from '../lib/campaign.ts';
 import { decodeProject, LEGACY_KEY, loadWorkspace, projectJson, saveWorkspace, STORAGE_KEY, validateWorkspace } from '../lib/storage.ts';
 import { keywordsCsv } from '../lib/export.ts';
 
@@ -18,6 +18,11 @@ function completeWorkspace() {
   ad.descriptions = ['Explore tutoring options and book a session.','Learn about our SAT preparation services.'].map(text => ({text,pin:'' as const}));
   return w;
 }
+
+test('additional languages do not create invisible English or Spanish duplicates', () => {
+  assert.deepEqual(mergeLanguageSelections(['English','Spanish'],['english','SPANISH','French',' french ','']),['English','Spanish','French']);
+  assert.deepEqual(mergeLanguageSelections([],['spanish','Japanese']),['Spanish','Japanese']);
+});
 
 test('empty drafts and invalid budgets cannot publish', () => {
   const w = createWorkspace();

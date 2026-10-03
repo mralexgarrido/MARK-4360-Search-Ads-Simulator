@@ -1,7 +1,7 @@
 import React from 'react';
 import type { CampaignData, LaunchSnapshot, Workspace } from '../types';
 import { AdPreview } from './AdPreview';
-import { BID_LABELS, keywordSyntax, landingUrl, requirements, usesConversions, usesValue } from '../lib/campaign';
+import { BID_LABELS, hasUnpublishedChanges, keywordSyntax, landingUrl, requirements, usesConversions, usesValue } from '../lib/campaign';
 const value = (text: string) => text.trim() || 'Not provided';
 const list = (items: string[]) => items.length ? items.join(', ') : 'None';
 function Facts({ entries }: { entries: [string,string][] }) {
@@ -68,6 +68,7 @@ export function PrintView({ workspace, snapshot, preview = false }: { workspace:
       <div key={key}><h3>{{audience:'Audience and targeting',keywords:'Structure and keywords',creative:'Creative and destination',budget:'Bidding and budget'}[key]}</h3><p className="preserve-lines">{value(text)}</p></div>)}
     <h2>Technical requirements for this campaign version</h2>{errors.length ? <ul>{errors.map((e,i) => <li key={i}>{e.message}</li>)}</ul> : <p>No missing technical fields detected. Strategic quality is for the instructor to evaluate.</p>}
     <h2>Publication record</h2><p>Current practice status: {workspace.status}. {workspace.launches.length} saved launch snapshots. {snapshot && 'This report uses the selected launch configuration; the current practice status may have changed since that launch.'}</p>
+    {!snapshot && hasUnpublishedChanges(workspace) && <p>The working campaign contains unpublished changes. The saved launch snapshots preserve the settings that were published.</p>}
     <ul>{workspace.launches.map((s,i) => <li key={s.id}>Publication {i+1}: {new Date(s.at).toLocaleString()} · {s.campaign.campaignName}</li>)}</ul>
     <h2>Local activity log</h2><table className="report-table"><thead><tr><th>Time</th><th>Action</th><th>Detail</th></tr></thead><tbody>
       {workspace.activity.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString()}</td><td>{a.action}</td><td>{a.detail}</td></tr>)}

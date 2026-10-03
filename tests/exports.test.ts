@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createWorkspace, newAd, newGroup } from '../types.ts';
 import { publishWorkspace } from '../lib/campaign.ts';
 import { downloadFile, keywordsCsv } from '../lib/export.ts';
-import { decodeProject, LEGACY_KEY, loadWorkspace, MAX_FILE_BYTES, MAX_FILE_MEGABYTES, migrateLegacy, projectJson, validateWorkspace } from '../lib/storage.ts';
+import { decodeProject, LEGACY_KEY, loadWorkspace, MAX_FILE_BYTES, MAX_FILE_MEGABYTES, migrateLegacy, projectJson, saveWorkspaceIfCurrent, STORAGE_KEY, StorageConflictError, validateWorkspace } from '../lib/storage.ts';
 import { assignmentFixture } from './fixture.ts';
 
 test('the comprehensive assignment JSON round trip retains every current and historical setting', () => {
@@ -117,6 +117,41 @@ test('keyword CSV preserves Unicode and neutralizes formulas after leading space
   assert.ok(csv.includes('"\'   =SUM(1,2)"'));
   assert.ok(csv.includes('"\'\t@SUM(1,2)"'));
   assert.ok(csv.includes('"Campaign","","free","broad","Negative"'));
+});
+
+test('a delayed save never replaces a different campaign saved by another tab', () => {
+  const memory = new Map<string,string>();
+  const storage = {getItem:(key: string) => memory.get(key) ?? null,setItem:(key: string,value: string) => {memory.set(key,value);}};
+  const first = createWorkspace(); first.campaign.campaignName = 'First tab';
+  const baseline = saveWorkspaceIfCurrent(storage,first,null);
+  const second = decodeProject(projectJson(first)); second.campaign.campaignName = 'Second tab edits';
+  const secondSaved = saveWorkspaceIfCurrent(storage,second,baseline);
+  first.campaign.businessBrief = 'First tab work still in memory';
+  assert.throws(() => saveWorkspaceIfCurrent(storage,first,baseline),StorageConflictError);
+  assert.equal(memory.get(STORAGE_KEY),secondSaved);
+  assert.equal(decodeProject(projectJson(first)).campaign.businessBrief,'First tab work still in memory');
+  assert.equal(saveWorkspaceIfCurrent(storage,first,secondSaved),JSON.stringify(first));
+});
+
+test('identical concurrent saves are harmless, while cleared storage is treated as a conflict', () => {
+  const memory = new Map<string,string>();
+  const storage = {getItem:(key: string) => memory.get(key) ?? null,setItem:(key: string,value: string) => {memory.set(key,value);}};
+  const w = createWorkspace();
+  const saved = saveWorkspaceIfCurrent(storage,w,null);
+  assert.equal(saveWorkspaceIfCurrent(storage,w,null),saved);
+  memory.clear();
+  assert.throws(() => saveWorkspaceIfCurrent(storage,w,saved),StorageConflictError);
+  assert.equal(memory.has(STORAGE_KEY),false);
+});
+
+test('guarded storage failures leave the earlier project intact for recovery', () => {
+  const w = createWorkspace(); const original = JSON.stringify(w);
+  const memory = new Map([[STORAGE_KEY,original]]);
+  w.campaign.businessBrief = 'Unsaved student work';
+  const storage = {getItem:(key: string) => memory.get(key) ?? null,setItem:() => {throw new Error('Quota exceeded');}};
+  assert.throws(() => saveWorkspaceIfCurrent(storage,w,original),/Quota exceeded/);
+  assert.equal(memory.get(STORAGE_KEY),original);
+  assert.equal(decodeProject(projectJson(w)).campaign.businessBrief,'Unsaved student work');
 });
 
 test('a failed browser download surfaces the failure and still cleans up its temporary resources', () => {

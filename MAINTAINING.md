@@ -31,8 +31,11 @@ For manual browser checks:
 5. Publish, edit a headline, and confirm the launch snapshot retains the earlier text. Republish, pause, resume, and inspect the recent local history.
 6. Print the current campaign and a selected launch. Inspect all pages for clipping and confirm every ad asset and rationale is included. Historical reports should use captured notes and current student identification.
 7. Check narrow-screen layouts, browser storage failure behavior, and assets served under the repository base path.
+8. Open the same workspace in two tabs. Edit and save one tab; verify the other pauses saving and keeps its own visible copy. Download that copy before reloading. With browser storage blocked, edit accepted fields, attempt Save now, and verify that closing or reloading requests a leave-page warning.
 
 Record actual browser and build checks separately. Do not claim a manual check passed because a build or rendered-markup test passed.
+
+See [CLASS_READINESS.md](CLASS_READINESS.md) for the latest classroom review and its verification limits.
 
 ## Teaching boundaries
 

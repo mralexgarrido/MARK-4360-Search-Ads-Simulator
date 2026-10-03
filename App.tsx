@@ -5,8 +5,8 @@ import { Search, Save, Printer, Plus, X, ChevronRight, ChevronDown, CheckCircle,
 import { AssetEditor, Check, Field, HelpButton, InfoBox, KeywordEditor, Modal, Section, SelectField, StringList } from './components/UI';
 import { AdPreview } from './components/AdPreview';
 import { CampaignSummary, PrintView } from './components/PrintView';
-import { BID_LABELS, DAYS, hasUnpublishedChanges, landingUrl, publishWorkspace, recordActivity, requirements, usesConversions, usesValue } from './lib/campaign';
-import { decodeProject, loadWorkspace, MAX_FILE_BYTES, MAX_FILE_MEGABYTES, projectJson, saveWorkspace } from './lib/storage';
+import { BID_LABELS, DAYS, hasUnpublishedChanges, landingUrl, mergeLanguageSelections, publishWorkspace, recordActivity, requirements, usesConversions, usesValue } from './lib/campaign';
+import { decodeProject, loadWorkspace, MAX_FILE_BYTES, MAX_FILE_MEGABYTES, projectJson, saveWorkspaceIfCurrent, STORAGE_KEY, StorageConflictError } from './lib/storage';
 import { downloadFile, keywordsCsv, reportHtml, REPORT_STYLES, safeFileName } from './lib/export';
 import { GUIDES } from './data/guides';
 import { AUDIENCE_CATEGORIES } from './data/audiences';
@@ -50,8 +50,12 @@ function AudiencePicker({ campaign, onChange }: { campaign: CampaignData; onChan
 
 export default function App() {
   const [initial] = useState(() => {
-    try { return {...loadWorkspace(window.localStorage),blocked:false}; }
-    catch { return {workspace:createWorkspace(),note:'The saved draft could not be restored. It has not been replaced. Import a project or start a new campaign to resume saving.',blocked:true}; }
+    try {
+      const storage = window.localStorage, storedValue = storage.getItem(STORAGE_KEY);
+      const loaded = loadWorkspace({getItem:key => key === STORAGE_KEY ? storedValue : storage.getItem(key)});
+      return {...loaded,storedValue,blocked:false};
+    }
+    catch { return {workspace:createWorkspace(),storedValue:null,note:'The saved draft could not be restored. It has not been replaced. Import a project or start a new campaign to resume saving.',blocked:true}; }
   });
   const [workspace,setWorkspace] = useState<Workspace>(initial.workspace);
   const [step,setStep] = useState<Step>('campaign'), [visited,setVisited] = useState<Set<Step>>(new Set(['campaign']));
@@ -68,6 +72,8 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null), heading = useRef<HTMLHeadingElement>(null), latest = useRef(workspace);
   const reportRef = useRef<HTMLDivElement>(null), pendingEntries = useRef(new Map<string,string>());
   const sidebarRef = useRef<HTMLElement>(null), menuButton = useRef<HTMLButtonElement>(null);
+  const storedValue = useRef(initial.storedValue), persistedWorkspace = useRef(JSON.stringify(initial.workspace));
+  const savePauseReason = useRef<'unreadable'|'conflict'|null>(initial.blocked ? 'unreadable' : null);
   latest.current = workspace;
   const campaign = workspace.campaign;
   const group = campaign.adGroups.find(g => g.id === groupId) || campaign.adGroups[0];
@@ -78,26 +84,65 @@ export default function App() {
   const reportCampaign = selectedSnapshot?.campaign || campaign;
   const changed = hasUnpublishedChanges(workspace);
   const help = () => setGuide(step);
+  const conflictNotice = 'Another simulator tab changed the saved workspace. Autosave is paused here to keep both copies intact. Download this tab\'s project JSON before reloading. Import a project or start a new campaign to resume saving.';
+  const persistWorkspace = (candidate: Workspace) => {
+    if (savePauseReason.current) return false;
+    try {
+      const encoded = saveWorkspaceIfCurrent(window.localStorage,candidate,storedValue.current);
+      storedValue.current = encoded; persistedWorkspace.current = encoded;
+      setSaving('Saved in this browser');
+      return true;
+    } catch (error) {
+      if (error instanceof StorageConflictError) {
+        savePauseReason.current = 'conflict'; setSavePaused(true); setSaving('Autosave paused'); setNotice(conflictNotice);
+      } else {
+        setSaving('Browser save unavailable'); setNotice('Browser storage is unavailable or full. Download your project JSON to keep your work; you can also retry Save now.');
+      }
+      return false;
+    }
+  };
+  const resumeSaving = () => {
+    try { storedValue.current = window.localStorage.getItem(STORAGE_KEY); } catch { storedValue.current = null; }
+    savePauseReason.current = null; setSavePaused(false);
+  };
 
   useEffect(() => {
     if (savePaused) return;
     setSaving('Saving…');
     const timeout = window.setTimeout(() => {
-      try { saveWorkspace(window.localStorage,workspace); setSaving('Saved in this browser'); }
-      catch { setSaving('Browser save unavailable'); setNotice('Browser storage is unavailable or full. Download your project JSON to keep your work; you can also retry Save now.'); }
+      persistWorkspace(workspace);
     },650);
     return () => window.clearTimeout(timeout);
   },[workspace,savePaused]);
   useEffect(() => {
-    const flush = () => { if (!savePaused) { try { saveWorkspace(window.localStorage,latest.current); } catch {} } };
+    const flush = () => { persistWorkspace(latest.current); };
     const hidden = () => { if (document.visibilityState === 'hidden') flush(); };
     window.addEventListener('pagehide',flush); document.addEventListener('visibilitychange',hidden);
     return () => { window.removeEventListener('pagehide',flush); document.removeEventListener('visibilitychange',hidden); };
   },[savePaused]);
   useEffect(() => {
-    const pendingWarning = (event: BeforeUnloadEvent) => {if (pendingEntries.current.size) {event.preventDefault();event.returnValue='';}};
+    const pendingWarning = (event: BeforeUnloadEvent) => {
+      persistWorkspace(latest.current);
+      if (pendingEntries.current.size || JSON.stringify(latest.current) !== persistedWorkspace.current) {event.preventDefault();event.returnValue='';}
+    };
     window.addEventListener('beforeunload',pendingWarning);
     return () => window.removeEventListener('beforeunload',pendingWarning);
+  },[]);
+  useEffect(() => {
+    const changedElsewhere = (event: StorageEvent) => {
+      if ((event.key !== STORAGE_KEY && event.key !== null) || savePauseReason.current) return;
+      try {
+        if (event.storageArea && event.storageArea !== window.localStorage) return;
+        // Read the latest value because an older storage event may still be queued.
+        if (window.localStorage.getItem(STORAGE_KEY) === storedValue.current) return;
+      } catch {
+        setSaving('Browser save unavailable'); setNotice('Browser storage is unavailable. Download your project JSON to keep your work.');
+        return;
+      }
+      savePauseReason.current = 'conflict'; setSavePaused(true); setSaving('Autosave paused'); setNotice(conflictNotice);
+    };
+    window.addEventListener('storage',changedElsewhere);
+    return () => window.removeEventListener('storage',changedElsewhere);
   },[]);
   useEffect(() => { heading.current?.focus(); },[step]);
   useEffect(() => { if (reportId !== 'current' && !workspace.launches.some(s => s.id === reportId)) setReportId('current'); },[workspace.launches,reportId]);
@@ -141,9 +186,8 @@ export default function App() {
   const adField = <K extends keyof SearchAd>(key: K, value: SearchAd[K]) => mutate(c => ({...c,adGroups:c.adGroups.map(g => g.id === group.id ? {...g,ads:g.ads.map(a => a.id === ad.id ? {...a,[key]:value} : a)} : g)}));
   const saveNow = () => {
     if (!entriesAdded()) return;
-    if (savePaused) { setNotice('Saving is paused to keep the unreadable original entry. Import a project or start a new campaign first.'); return; }
-    try { saveWorkspace(window.localStorage,workspace); setSaving('Saved in this browser'); setNotice('Your current workspace is saved in this browser.'); }
-    catch { setSaving('Browser save unavailable'); setNotice('Browser storage is unavailable. Download a project JSON to keep your work.'); }
+    if (savePaused) { setNotice(savePauseReason.current === 'conflict' ? conflictNotice : 'Saving is paused to keep the unreadable original entry. Import a project or start a new campaign first.'); return; }
+    if (persistWorkspace(workspace)) setNotice('Your current workspace is saved in this browser.');
   };
   const exportProject = () => {
     if (!entriesAdded()) return;
@@ -289,7 +333,7 @@ export default function App() {
                 options={options([['presence_interest','Presence or interest: people in, regularly in, or interested in included locations'],['presence','Presence: people in or regularly in included locations']])}/>
               <fieldset><legend>Languages</legend><div className="inline-checks">{['English','Spanish'].map(language => <Check key={language} label={language} checked={campaign.languages.includes(language)}
                 onChange={checked => field('languages',checked ? [...campaign.languages,language] : campaign.languages.filter(l => l !== language))}/>)}</div></fieldset>
-              <StringList label="Additional languages" items={campaign.languages.filter(l => !['English','Spanish'].includes(l))} onChange={v => field('languages',[...campaign.languages.filter(l => ['English','Spanish'].includes(l)),...v])} onPendingChange={trackEntry('languages','additional languages')} placeholder="Add a language" limit={20}/>
+              <StringList label="Additional languages" items={campaign.languages.filter(l => !['English','Spanish'].includes(l))} onChange={v => field('languages',mergeLanguageSelections(campaign.languages.filter(l => ['English','Spanish'].includes(l)),v))} onPendingChange={trackEntry('languages','additional languages')} placeholder="Add a language" limit={20}/>
             </Section>
             <Section title="Dates and ad schedule" help={help}>
               <div className="two-columns"><Field label="Start date" type="date" value={campaign.startDate} onChange={v => field('startDate',v)} hint="Optional in this planning workspace."/>
@@ -451,12 +495,12 @@ export default function App() {
     {dialog === 'reset' && <Modal title="Start a new campaign?" onClose={() => setDialog(null)}>
       <p>This replaces the active browser workspace. Download the current project first if you want to keep its campaign and snapshots.</p>
       <div className="button-row"><button type="button" className="button secondary" onClick={exportProject}>Download current project</button><button type="button" className="button secondary" onClick={() => setDialog(null)}>Cancel</button>
-        <button type="button" className="button primary" onClick={() => {const fresh=createWorkspace();pendingEntries.current.clear();setWorkspace(fresh);setGroupId(fresh.campaign.adGroups[0].id);setAdId(fresh.campaign.adGroups[0].ads[0].id);setReportId('current');setReportVisible(false);setSavePaused(false);setDialog(null);setNotice('New campaign started.');go('campaign');setVisited(new Set(['campaign']));}}>Start new campaign</button></div>
+        <button type="button" className="button primary" onClick={() => {const fresh=createWorkspace();pendingEntries.current.clear();setWorkspace(fresh);setGroupId(fresh.campaign.adGroups[0].id);setAdId(fresh.campaign.adGroups[0].ads[0].id);setReportId('current');setReportVisible(false);resumeSaving();setDialog(null);setNotice('New campaign started.');go('campaign');setVisited(new Set(['campaign']));}}>Start new campaign</button></div>
     </Modal>}
     {pendingImport && <Modal title="Open the imported project?" onClose={() => setPendingImport(null)}>
       <p>Importing <strong>{pendingImport.campaign.campaignName || 'an unnamed campaign'}</strong> will replace the active workspace. Download your current project if you need to keep it.</p>
       <div className="button-row"><button type="button" className="button secondary" onClick={exportProject}>Download current project</button><button type="button" className="button secondary" onClick={() => setPendingImport(null)}>Cancel</button>
-        <button type="button" className="button primary" onClick={() => {const next=recordActivity(pendingImport,'Imported project','Opened a local campaign file.');pendingEntries.current.clear();setWorkspace(next);setGroupId(next.campaign.adGroups[0].id);setAdId(next.campaign.adGroups[0].ads[0].id);setReportId('current');setReportVisible(false);setSavePaused(false);setPendingImport(null);setNotice('Project imported. Review its campaign settings.');go('campaign');}}>Open project</button></div>
+        <button type="button" className="button primary" onClick={() => {const next=recordActivity(pendingImport,'Imported project','Opened a local campaign file.');pendingEntries.current.clear();setWorkspace(next);setGroupId(next.campaign.adGroups[0].id);setAdId(next.campaign.adGroups[0].ads[0].id);setReportId('current');setReportVisible(false);resumeSaving();setPendingImport(null);setNotice('Project imported. Review its campaign settings.');go('campaign');}}>Open project</button></div>
     </Modal>}
     {deletion && <Modal title={deletion.kind === 'group' ? 'Remove this ad group?' : 'Remove this ad?'} onClose={() => setDeletion(null)}>
       <p>This removes the selection from your working campaign. Previously saved launch snapshots keep their original contents.</p>

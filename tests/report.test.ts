@@ -49,6 +49,8 @@ test('submission rendering includes all groups, all ad assets and the selected h
     const current = renderToStaticMarkup(React.createElement(PrintView,{workspace:published}));
     assert.ok(current.includes('New working name'));
     assert.ok(current.includes('New working explanation'));
+    assert.ok(current.includes('working campaign contains unpublished changes'));
+    assert.ok(!historical.includes('working campaign contains unpublished changes'));
   } finally { await server.close(); }
 });
 
